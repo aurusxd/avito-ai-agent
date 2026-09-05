@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.db.base import engine
 from app.errors import register_error_handlers
 from app.logging import setup_logging
+from app.parser.router import router as parser_router
 from app.scheduler import is_running, shutdown_scheduler, start_scheduler
 
 
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(system_router)
     app.include_router(categories_router, prefix="/api")
+    app.include_router(parser_router, prefix="/api")
     return app
 
 

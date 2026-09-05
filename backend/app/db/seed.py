@@ -19,19 +19,24 @@ from app.domain.schemas import CategoryCreate, ListingDTO, SellerDTO
 SEED_CATEGORIES: list[CategoryCreate] = [
     CategoryCreate(
         name="Бани",
-        avito_url_or_slug="rossiya/predlozheniya_uslug/stroitelstvo/bani",
+        avito_url_or_slug=(
+            "all/remont_i_stroitelstvo/gotovye_stroeniya_i_sruby/banya-ASgBAgICAkRYlrI68I4O2o_OAQ"
+        ),
         region="Россия",
         min_listings_per_seller=3,
     ),
     CategoryCreate(
         name="Модульные дома",
-        avito_url_or_slug="rossiya/doma_dachi_kottedzhi/modulnye_doma",
+        avito_url_or_slug=(
+            "all/remont_i_stroitelstvo/gotovye_stroeniya_i_sruby/dom-ASgBAgICAkRYlrI68I4O2I_OAQ"
+            "?q=%D0%BC%D0%BE%D0%B4%D1%83%D0%BB%D1%8C%D0%BD%D1%8B%D0%B9+%D0%B4%D0%BE%D0%BC"
+        ),
         region="Россия",
         min_listings_per_seller=3,
     ),
     CategoryCreate(
         name="Услуги строительства",
-        avito_url_or_slug="rossiya/predlozheniya_uslug/stroitelstvo",
+        avito_url_or_slug="all/predlozheniya_uslug/stroitelstvo-ASgBAgICAUSYC6Cf8QI",
         region="Россия",
         min_listings_per_seller=3,
         enabled=False,

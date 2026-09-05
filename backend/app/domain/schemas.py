@@ -70,3 +70,29 @@ class OutreachJob(BaseModel):
     seller_id: int = Field(ge=1)
     stage: Stage
     account_id: int = Field(ge=1)
+
+
+class SellerRead(SellerDTO):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category_id: int
+    created_at: datetime
+
+
+class ListingRead(ListingDTO):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    seller_id: int
+    category_id: int
+    parsed_at: datetime
+
+
+class ParserRunResult(BaseModel):
+    category_id: int
+    sellers_matched: int = 0
+    sellers_created: int = 0
+    sellers_updated: int = 0
+    listings_created: int = 0
+    listings_updated: int = 0
