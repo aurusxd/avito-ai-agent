@@ -26,3 +26,24 @@ export type ApiErrorBody = {
 		details?: unknown;
 	};
 };
+
+export type Seller = {
+	id: number;
+	avito_seller_id: string;
+	name: string;
+	profile_url: string;
+	listings_count: number;
+	region: string;
+	status: SellerStatus;
+	category_id: number;
+	created_at: string;
+};
+
+export type ParserRunResult = {
+	category_id: number;
+	sellers_matched: number;
+	sellers_created: number;
+	sellers_updated: number;
+	listings_created: number;
+	listings_updated: number;
+};
