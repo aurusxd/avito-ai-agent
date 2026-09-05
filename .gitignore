@@ -1,0 +1,34 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+wheels/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Project-specific
+.venv
+.idea/
+.vscode/
+.env
+.DS_Store
+
+tech.md
+CLAUDE.md
+
+# Playwright storage state (secrets, never commit)
+state.json
+*.storage.json
+backend/data/
+sessions/
+
+# Databases
+*.db
+*.db-journal
+*.sqlite3
+
+# Frontend
+node_modules/
+.svelte-kit/
+frontend/build/
