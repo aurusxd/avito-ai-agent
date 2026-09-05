@@ -11,7 +11,7 @@ services:
     volumes:
       - sqlite-data:/app/data
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8080}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -25,7 +25,7 @@ services:
       API_BASE_URL: http://backend:8000
       ORIGIN: ${PANEL_ORIGIN:-http://localhost:3000}
     ports:
-      - "3000:3000"
+      - "${PANEL_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy
