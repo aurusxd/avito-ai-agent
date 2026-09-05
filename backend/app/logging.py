@@ -1,6 +1,10 @@
 import sys
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from loguru import Record
 
 from app.config import get_settings
 
@@ -13,7 +17,7 @@ _FORMAT = (
 )
 
 
-def _redact(record: dict) -> None:
+def _redact(record: "Record") -> None:
     extra = record["extra"]
     for key in list(extra):
         if any(marker in key.lower() for marker in _SECRET_KEYS):

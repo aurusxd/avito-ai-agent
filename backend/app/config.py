@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     app_name: str = "avito-bot"
     debug: bool = False
     log_level: str = "INFO"
+    timezone: str = "Europe/Moscow"
 
     database_url: str = "sqlite+aiosqlite:///./data/avito.db"
 
