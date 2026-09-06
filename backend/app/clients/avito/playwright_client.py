@@ -1,7 +1,8 @@
 import asyncio
 import random
 import re
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, cast
 from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
 from loguru import logger
@@ -23,13 +24,27 @@ from app.clients.avito.base import (
     SendResult,
 )
 from app.config import Settings, get_settings
+from app.domain.proxy import ProxyCredentials, proxy_settings
+from app.domain.rotation import BlockKindLiteral
 from app.domain.schemas import CategoryDTO, ListingDTO, SellerDTO
 
 ITEM_SELECTOR = '[data-marker="item"]'
 NEXT_PAGE_SELECTOR = '[data-marker="pagination-button/nextPage"]'
 ACTIVE_TAB_SELECTOR = '[data-marker="extended_profile_tabs/tab(active)"]'
+ICEBREAKER_TEXTAREA = '[data-marker="icebreakers/textarea"]'
+ICEBREAKER_SEND = '[data-marker="icebreakers/send-message"]'
+VPN_CHECK_SELECTOR = '[data-marker="vpn-check-retry-button"]'
+PROFILE_LINK_SELECTOR = '[data-marker="item-title"]'
+LOGGED_OUT_SELECTOR = '[data-marker="header/login-button"]'
 
-BLOCK_MARKERS = ("доступ ограничен", "подтвердите, что вы не робот", "проблема с ip")
+CAPTCHA_MARKERS = ("подтвердите, что вы не робот", "captcha")
+FORBIDDEN_MARKERS = (
+    "доступ ограничен",
+    "проблема с ip",
+    "возможно, у вас включён vpn",
+    "возможно, у вас включен vpn",
+)
+BLOCK_MARKERS = CAPTCHA_MARKERS + FORBIDDEN_MARKERS
 PROFILE_TITLE_SUFFIX = re.compile(r"\s+[-–—]\s+официальная страница")
 GENERIC_TITLE = re.compile(r"^Авито")
 
@@ -216,7 +231,86 @@ class PlaywrightAvitoClient:
     async def send_message(
         self, account: AvitoAccountRef, seller: SellerDTO, text: str
     ) -> SendResult:
-        raise NotImplementedError("sending belongs to the outreach slice")
+        validated_account = AvitoAccountRef.model_validate(account)
+        validated_seller = SellerDTO.model_validate(seller)
+        if not text.strip():
+            raise ValueError("message text must not be empty")
+
+        proxy = proxy_settings(validated_account.proxy_url) or self._settings_proxy()
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                headless=self.settings.avito_headless,
+                args=["--disable-blink-features=AutomationControlled"],
+                proxy=cast("ProxySettings | None", proxy),
+            )
+            try:
+                context = await browser.new_context(
+                    storage_state=validated_account.session_storage_path,
+                    viewport={"width": 1440, "height": 900},
+                    locale="ru-RU",
+                    timezone_id="Europe/Moscow",
+                )
+                page = await context.new_page()
+                return await self._write_to_seller(page, validated_seller, text)
+            finally:
+                await browser.close()
+
+    async def _write_to_seller(self, page: Page, seller: SellerDTO, text: str) -> SendResult:
+        await self._goto(page, seller.profile_url)
+        await self._require_session(page, seller)
+
+        listing_url = await self._first_listing_url(page)
+        if listing_url is None:
+            return SendResult(
+                status="failed",
+                sent_at=datetime.now(UTC),
+                error=f"seller {seller.avito_seller_id} has no listing to write from",
+            )
+
+        await self._sleep()
+        await self._goto(page, listing_url)
+
+        if await page.query_selector(ICEBREAKER_TEXTAREA) is None:
+            return SendResult(
+                status="failed",
+                sent_at=datetime.now(UTC),
+                error=f"no message composer on {listing_url}",
+            )
+
+        await self._type_like_human(page, text)
+        await page.click(ICEBREAKER_SEND)
+        await page.wait_for_timeout(self.settings.outreach_settle_ms)
+
+        block_kind = await self._detect_block(page, None)
+        if block_kind is not None:
+            raise AvitoBlockedError(f"avito returned {block_kind} while sending", block_kind)
+
+        logger.info("message sent to seller {seller}", seller=seller.avito_seller_id)
+        return SendResult(status="sent", sent_at=datetime.now(UTC))
+
+    async def _require_session(self, page: Page, seller: SellerDTO) -> None:
+        if await page.query_selector(LOGGED_OUT_SELECTOR) is not None:
+            raise AvitoBlockedError(
+                f"session expired before writing to {seller.avito_seller_id}",
+                "auth_required",
+            )
+
+    async def _first_listing_url(self, page: Page) -> str | None:
+        link = await page.query_selector(PROFILE_LINK_SELECTOR)
+        href = await link.get_attribute("href") if link else None
+        return absolute_listing_url(self.settings.avito_base_url, href) if href else None
+
+    async def _type_like_human(self, page: Page, text: str) -> None:
+        low = self.settings.outreach_type_delay_min_ms
+        high = max(low, self.settings.outreach_type_delay_max_ms)
+        composer = page.locator(ICEBREAKER_TEXTAREA)
+        await composer.click()
+        await composer.press_sequentially(text, delay=random.uniform(low, high))
+        await page.wait_for_timeout(random.randint(400, 1_200))
+
+    def _settings_proxy(self) -> ProxyCredentials | None:
+        return proxy_settings(self.settings.avito_proxy_server)
 
     async def _new_context(self, browser: Browser) -> BrowserContext:
         return await browser.new_context(
@@ -297,11 +391,13 @@ class PlaywrightAvitoClient:
 
     async def _goto(self, page: Page, url: str) -> None:
         attempts = self.settings.parser_nav_retries + 1
+        status: int | None = None
         for attempt in range(1, attempts + 1):
             try:
-                await page.goto(
+                response = await page.goto(
                     url, wait_until="domcontentloaded", timeout=self.settings.parser_nav_timeout_ms
                 )
+                status = response.status if response else None
                 break
             except PlaywrightError as error:
                 if attempt == attempts:
@@ -315,9 +411,27 @@ class PlaywrightAvitoClient:
                 )
                 await asyncio.sleep(self.settings.parser_retry_backoff_seconds * attempt)
 
-        title = (await page.title()).lower()
-        if any(marker in title for marker in BLOCK_MARKERS):
-            raise AvitoBlockedError(f"avito blocked the request on {url}")
+        if self.settings.avito_block_check_delay_ms:
+            await page.wait_for_timeout(self.settings.avito_block_check_delay_ms)
+
+        block_kind = await self._detect_block(page, status)
+        if block_kind is not None:
+            raise AvitoBlockedError(f"avito returned {block_kind} on {url}", block_kind)
+
+    async def _detect_block(self, page: Page, status: int | None) -> BlockKindLiteral | None:
+        if status == 429:
+            return "rate_limited"
+        if status == 403:
+            return "forbidden"
+        if await page.query_selector(VPN_CHECK_SELECTOR) is not None:
+            return "forbidden"
+
+        haystack = f"{await page.title()} {await page.inner_text('body')}".lower()
+        if any(marker in haystack for marker in CAPTCHA_MARKERS):
+            return "captcha"
+        if any(marker in haystack for marker in FORBIDDEN_MARKERS):
+            return "forbidden"
+        return None
 
     async def _sleep(self) -> None:
         low = self.settings.parser_delay_min_seconds
