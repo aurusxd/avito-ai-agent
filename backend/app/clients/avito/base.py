@@ -3,6 +3,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from app.domain.auth_session import LoginStatusLiteral
 from app.domain.rotation import BlockKindLiteral
 from app.domain.schemas import CategoryDTO, ListingDTO, MessageStatusLiteral, SellerDTO
 
@@ -65,3 +66,21 @@ class AvitoClient(Protocol):
     async def fetch_replies(
         self, account: AvitoAccountRef, limit: int = 50
     ) -> list[IncomingReplyDTO]: ...
+
+
+class LoginStep(BaseModel):
+    status: LoginStatusLiteral
+    hint: str | None = None
+
+
+@runtime_checkable
+class AvitoAuthClient(Protocol):
+    async def start(self, login: str, password: str, proxy_url: str | None = None) -> LoginStep: ...
+
+    async def submit_code(self, code: str) -> LoginStep: ...
+
+    async def storage_state(self) -> dict[str, object]: ...
+
+    async def screenshot(self) -> bytes | None: ...
+
+    async def close(self) -> None: ...
