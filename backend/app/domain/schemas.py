@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from app.domain.auth_session import LoginStatusLiteral
 from app.domain.rotation import MAX_DAILY_LIMIT, AccountStatusLiteral, BlockKindLiteral
 from app.domain.variation import VariationSourceLiteral
 
@@ -379,3 +380,24 @@ class DashboardStats(BaseModel):
     window_open_now: bool = False
     closed_reason: str | None = None
     next_window_at: datetime | None = None
+
+
+class LoginStartRequest(BaseModel):
+    login: str = Field(min_length=1, max_length=255)
+    password: SecretStr = Field(min_length=1)
+    proxy_url: str | None = Field(default=None, max_length=512)
+    daily_limit: int = Field(default=MAX_DAILY_LIMIT, ge=1, le=MAX_DAILY_LIMIT)
+
+
+class LoginCodeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=12)
+
+
+class LoginSessionRead(BaseModel):
+    session_id: str
+    login: str
+    status: LoginStatusLiteral
+    hint: str | None = None
+    account_id: int | None = None
+    has_screenshot: bool = False
+    expires_at: datetime

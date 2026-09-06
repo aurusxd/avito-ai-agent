@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     leads_poll_seconds: int = Field(default=60, ge=10, le=600)
     leads_history_limit: int = Field(default=20, ge=1, le=200)
 
+    auth_client: Literal["fake", "playwright"] = "fake"
+    login_wait_ms: int = Field(default=30_000, ge=1_000)
+    login_settle_ms: int = Field(default=6_000, ge=0)
+    login_session_ttl_seconds: int = Field(default=600, ge=60, le=3_600)
+    sessions_dir: str = "data/sessions"
+
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:4173"]
     panel_api_token: str = "dev-panel-token"
 

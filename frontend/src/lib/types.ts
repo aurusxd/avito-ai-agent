@@ -163,3 +163,22 @@ export type DashboardStats = {
 	closed_reason: string | null;
 	next_window_at: string | null;
 };
+
+export type LoginStatus =
+	| 'starting'
+	| 'code_required'
+	| 'captcha_required'
+	| 'saving'
+	| 'done'
+	| 'failed'
+	| 'expired';
+
+export type LoginSession = {
+	session_id: string;
+	login: string;
+	status: LoginStatus;
+	hint: string | null;
+	account_id: number | null;
+	has_screenshot: boolean;
+	expires_at: string;
+};

@@ -12,6 +12,7 @@
 	import * as Table from "$lib/ui/table/index.js";
 	import type { AccountStatus } from "$lib/types";
 	import type { ActionData, PageData } from "./$types";
+	import AccountLoginDialog from "./AccountLoginDialog.svelte";
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -121,10 +122,12 @@
 				не хранит
 			</Card.Description>
 			<Card.Action>
+				<div class="flex items-center gap-2">
+					<AccountLoginDialog />
 				<Dialog.Root bind:open={createOpen}>
 					<Dialog.Trigger>
 						{#snippet child({ props })}
-							<Button {...props}>Добавить</Button>
+							<Button {...props} variant="outline">Добавить вручную</Button>
 						{/snippet}
 					</Dialog.Trigger>
 					<Dialog.Content class="sm:max-w-md">
@@ -188,6 +191,7 @@
 						</form>
 					</Dialog.Content>
 				</Dialog.Root>
+							</div>
 			</Card.Action>
 		</Card.Header>
 		<Card.Content>
