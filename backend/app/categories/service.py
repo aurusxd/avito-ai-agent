@@ -1,8 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Category
-from app.domain.schemas import CategoryCreate, CategoryDTO, CategoryUpdate
+from app.db.models import Category, Listing, Seller, SellerStatus
+from app.domain.schemas import CategoryCreate, CategoryDTO, CategoryRead, CategoryUpdate
 from app.errors import ConflictError, NotFoundError
 
 
@@ -10,9 +10,46 @@ class CategoryService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list(self) -> list[CategoryDTO]:
-        rows = await self.session.scalars(select(Category).order_by(Category.id))
-        return [CategoryDTO.model_validate(row) for row in rows]
+    async def list_categories(self, region: str | None = None) -> list[CategoryRead]:
+        query = select(Category).order_by(Category.id)
+        if region is not None:
+            query = query.where(Category.region == region)
+        rows = list(await self.session.scalars(query))
+        return [await self._with_stats(row) for row in rows]
+
+    async def regions(self) -> list[str]:
+        rows = await self.session.scalars(
+            select(Category.region).distinct().order_by(Category.region)
+        )
+        return list(rows)
+
+    async def _with_stats(self, category: Category) -> CategoryRead:
+        sellers = await self.session.scalar(
+            select(func.count()).select_from(Seller).where(Seller.category_id == category.id)
+        )
+        contacted = await self.session.scalar(
+            select(func.count())
+            .select_from(Seller)
+            .where(
+                Seller.category_id == category.id,
+                Seller.status != SellerStatus.NEW,
+            )
+        )
+        leads = await self.session.scalar(
+            select(func.count())
+            .select_from(Seller)
+            .where(Seller.category_id == category.id, Seller.status == SellerStatus.LEAD)
+        )
+        listings = await self.session.scalar(
+            select(func.count()).select_from(Listing).where(Listing.category_id == category.id)
+        )
+        return CategoryRead(
+            **CategoryDTO.model_validate(category).model_dump(),
+            sellers_found=sellers or 0,
+            sellers_contacted=contacted or 0,
+            leads=leads or 0,
+            listings_found=listings or 0,
+        )
 
     async def _get_or_raise(self, category_id: int) -> Category:
         category = await self.session.get(Category, category_id)

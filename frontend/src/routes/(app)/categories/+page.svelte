@@ -18,6 +18,9 @@
 	let toggleForms: Record<number, HTMLFormElement | null> = $state({});
 
 	const enabledCount = $derived(data.categories.filter((item) => item.enabled).length);
+	const sellersFound = $derived(
+		data.categories.reduce((total, item) => total + item.sellers_found, 0)
+	);
 
 	$effect(() => {
 		if (form && 'message' in form && form.message) {
@@ -29,11 +32,34 @@
 <svelte:head><title>Категории</title></svelte:head>
 
 <div class="space-y-6">
-	<div class="grid gap-4 sm:grid-cols-3">
+	<div class="grid gap-4 sm:grid-cols-4">
 		<StatCard label="Всего категорий" value={data.categories.length} />
 		<StatCard label="Активных" value={enabledCount} trend="up" hint="участвуют в парсинге" />
 		<StatCard label="Выключено" value={data.categories.length - enabledCount} />
+		<StatCard label="Найдено продавцов" value={sellersFound} hint="по всем категориям" />
 	</div>
+
+	{#if data.regions.length > 1}
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="text-muted-foreground text-sm">Регион:</span>
+			<a
+				href="/categories"
+				class="rounded-md border px-3 py-1 text-sm"
+				class:bg-accent={!data.region}
+			>
+				все
+			</a>
+			{#each data.regions as region (region)}
+				<a
+					href={'/categories?region=' + encodeURIComponent(region)}
+					class="rounded-md border px-3 py-1 text-sm"
+					class:bg-accent={data.region === region}
+				>
+					{region}
+				</a>
+			{/each}
+		</div>
+	{/if}
 
 	{#if data.loadError}
 		<p class="text-destructive text-sm" role="alert">{data.loadError}</p>
@@ -113,6 +139,8 @@
 							<Table.Head>Регион</Table.Head>
 							<Table.Head>Ссылка</Table.Head>
 							<Table.Head class="text-right">Минимум</Table.Head>
+							<Table.Head class="text-right">Продавцы</Table.Head>
+							<Table.Head class="text-right">Лиды</Table.Head>
 							<Table.Head>Статус</Table.Head>
 							<Table.Head class="text-right">Действия</Table.Head>
 						</Table.Row>
@@ -128,6 +156,10 @@
 								<Table.Cell class="text-right tabular-nums">
 									{category.min_listings_per_seller}
 								</Table.Cell>
+								<Table.Cell class="text-right tabular-nums">
+									{category.sellers_contacted} / {category.sellers_found}
+								</Table.Cell>
+								<Table.Cell class="text-right tabular-nums">{category.leads}</Table.Cell>
 								<Table.Cell>
 									<div class="flex items-center gap-2">
 										<form
@@ -158,7 +190,7 @@
 							</Table.Row>
 						{:else}
 							<Table.Row>
-								<Table.Cell colspan={6} class="text-muted-foreground py-10 text-center">
+								<Table.Cell colspan={8} class="text-muted-foreground py-10 text-center">
 									Категорий пока нет
 								</Table.Cell>
 							</Table.Row>

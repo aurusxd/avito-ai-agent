@@ -39,6 +39,13 @@ class CategoryDTO(CategoryBase):
     id: int
 
 
+class CategoryRead(CategoryDTO):
+    sellers_found: int = 0
+    sellers_contacted: int = 0
+    leads: int = 0
+    listings_found: int = 0
+
+
 class SellerDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

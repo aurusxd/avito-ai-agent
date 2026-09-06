@@ -15,6 +15,13 @@ export type Category = {
 	enabled: boolean;
 };
 
+export type CategoryRead = Category & {
+	sellers_found: number;
+	sellers_contacted: number;
+	leads: number;
+	listings_found: number;
+};
+
 export type CategoryCreate = Omit<Category, 'id'>;
 
 export type CategoryUpdate = Partial<CategoryCreate>;

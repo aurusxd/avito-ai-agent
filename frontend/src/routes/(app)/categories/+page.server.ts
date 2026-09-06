@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { ApiError, PANEL_TOKEN_COOKIE, apiFetch } from '$lib/api';
-import type { Category, CategoryCreate, CategoryUpdate } from '$lib/types';
+import type { Category, CategoryCreate, CategoryRead, CategoryUpdate } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
 function token(cookies: { get: (name: string) => string | undefined }): string | undefined {
@@ -14,16 +14,24 @@ function toFailure(error: unknown) {
 	throw error;
 }
 
-export const load: PageServerLoad = async ({ cookies, fetch }) => {
+export const load: PageServerLoad = async ({ cookies, fetch, url }) => {
+	const region = url.searchParams.get('region');
+	const query = region ? '?region=' + encodeURIComponent(region) : '';
+
 	try {
-		const categories = await apiFetch<Category[]>('/api/categories', {
-			token: token(cookies),
-			fetch
-		});
-		return { categories, loadError: null };
+		const [categories, regions] = await Promise.all([
+			apiFetch<CategoryRead[]>('/api/categories' + query, { token: token(cookies), fetch }),
+			apiFetch<string[]>('/api/categories/regions', { token: token(cookies), fetch })
+		]);
+		return { categories, regions, region, loadError: null };
 	} catch (error) {
 		if (error instanceof ApiError) {
-			return { categories: [] as Category[], loadError: error.message };
+			return {
+				categories: [] as CategoryRead[],
+				regions: [] as string[],
+				region,
+				loadError: error.message
+			};
 		}
 		throw error;
 	}

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.categories.service import CategoryService
 from app.db.base import get_session
-from app.domain.schemas import CategoryCreate, CategoryDTO, CategoryUpdate
+from app.domain.schemas import CategoryCreate, CategoryDTO, CategoryRead, CategoryUpdate
 from app.security import require_panel_token
 
 router = APIRouter(
@@ -24,9 +24,14 @@ def get_service(session: SessionDep) -> CategoryService:
 ServiceDep = Annotated[CategoryService, Depends(get_service)]
 
 
-@router.get("", response_model=list[CategoryDTO])
-async def list_categories(service: ServiceDep) -> list[CategoryDTO]:
-    return await service.list()
+@router.get("", response_model=list[CategoryRead])
+async def list_categories(service: ServiceDep, region: str | None = None) -> list[CategoryRead]:
+    return await service.list_categories(region)
+
+
+@router.get("/regions", response_model=list[str])
+async def list_regions(service: ServiceDep) -> list[str]:
+    return await service.regions()
 
 
 @router.get("/{category_id}", response_model=CategoryDTO)
