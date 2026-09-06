@@ -1,6 +1,11 @@
 from typing import Any
 
-from app.clients.avito.playwright_auth import PlaywrightAvitoAuthClient, _short
+from app.clients.avito.playwright_auth import (
+    PlaywrightAvitoAuthClient,
+    _short,
+    describe,
+    scrub,
+)
 from app.config import get_settings
 
 PHONE_FIELD = {
@@ -81,3 +86,25 @@ def test_short_collapses_whitespace_and_trims() -> None:
     assert _short("  Неверный   логин\n\nили пароль  ") == "Неверный логин или пароль"
     assert _short("") == "empty popup"
     assert len(_short("а" * 500)) == 160
+
+
+def test_describe_keeps_the_message_and_hides_the_password() -> None:
+    error = RuntimeError("net::ERR_TUNNEL_CONNECTION_FAILED for hunter2")
+
+    described = describe(error, "hunter2")
+
+    assert "RuntimeError" in described
+    assert "ERR_TUNNEL_CONNECTION_FAILED" in described
+    assert "hunter2" not in described
+    assert "***" in described
+
+
+def test_describe_collapses_whitespace_and_truncates() -> None:
+    error = RuntimeError("a" * 500)
+
+    assert len(describe(error)) == 220
+    assert describe(RuntimeError("two\n\nlines")) == "RuntimeError: two lines"
+
+
+def test_scrub_leaves_the_message_alone_without_a_secret() -> None:
+    assert scrub("plain message", "") == "plain message"

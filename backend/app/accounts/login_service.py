@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.avito.base import AvitoAuthClient, LoginStep
+from app.clients.avito.playwright_auth import describe
 from app.config import BACKEND_ROOT, Settings
 from app.db.models import Account
 from app.domain.auth_session import (
@@ -89,7 +90,11 @@ class LoginService:
                 kind=type(error).__name__,
             )
             run.screenshot = await self._safe_screenshot(run)
-            await self._finish(run, "failed", f"login crashed: {type(error).__name__}")
+            await self._finish(
+                run,
+                "failed",
+                f"login crashed: {describe(error, payload.password.get_secret_value())}",
+            )
             return self._read(run)
 
         await self._apply(run, step)
@@ -112,7 +117,7 @@ class LoginService:
         try:
             step = await run.client.submit_code(code.strip())
         except Exception as error:
-            await self._finish(run, "failed", f"code check crashed: {type(error).__name__}")
+            await self._finish(run, "failed", f"code check crashed: {describe(error)}")
             return self._read(run)
 
         await self._apply(run, step)
@@ -156,7 +161,7 @@ class LoginService:
         try:
             state = await run.client.storage_state()
         except Exception as error:
-            await self._finish(run, "failed", f"could not read the session: {type(error).__name__}")
+            await self._finish(run, "failed", f"could not read the session: {describe(error)}")
             return
 
         relative = Path(self.settings.sessions_dir) / f"{_slug(run.session.login)}.storage.json"

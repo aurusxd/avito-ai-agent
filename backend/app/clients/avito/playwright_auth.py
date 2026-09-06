@@ -64,6 +64,16 @@ CREDENTIAL_ERROR_MARKERS = (
 BLOCKED_MARKERS = ("доступ ограничен", "слишком много попыток", "временно заблокирован")
 
 
+def scrub(message: str, secret: str) -> str:
+    cleaned = message.replace(secret, "***") if secret else message
+    return " ".join(cleaned.split())
+
+
+def describe(error: BaseException, secret: str = "", limit: int = 220) -> str:
+    text = scrub(f"{type(error).__name__}: {error}", secret)
+    return text[:limit]
+
+
 def _short(value: str, limit: int = 160) -> str:
     collapsed = " ".join(value.split())
     return collapsed[:limit] if collapsed else "empty popup"
@@ -89,32 +99,58 @@ class PlaywrightAvitoAuthClient:
         self._page: Page | None = None
 
     async def start(self, login: str, password: str, proxy_url: str | None = None) -> LoginStep:
+        requested = proxy_url or self.settings.avito_proxy_server
         proxy = proxy_settings(proxy_url) or proxy_settings(self.settings.avito_proxy_server)
+        if requested and proxy is None:
+            return LoginStep(
+                status="failed",
+                hint="proxy url is malformed, expected http://user:pass@host:port",
+            )
+
         logger.info(
             "login attempt for {login} via {proxy}",
             login=login,
-            proxy=mask_proxy_url(proxy_url) if proxy_url else "direct",
+            proxy=mask_proxy_url(requested) if requested else "direct",
         )
+        if self.settings.avito_headless:
+            logger.warning(
+                "AVITO_HEADLESS is true, avito detects headless browsers and will block the login"
+            )
 
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=self.settings.avito_headless,
-            args=["--disable-blink-features=AutomationControlled"],
-            proxy=cast("ProxySettings | None", proxy),
-        )
-        self._context = await self._browser.new_context(
-            viewport={"width": 1440, "height": 900},
-            locale="ru-RU",
-            timezone_id=self.settings.timezone,
-        )
-        self._page = await self._context.new_page()
+        try:
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
+                headless=self.settings.avito_headless,
+                args=["--disable-blink-features=AutomationControlled"],
+                proxy=cast("ProxySettings | None", proxy),
+            )
+            self._context = await self._browser.new_context(
+                viewport={"width": 1440, "height": 900},
+                locale="ru-RU",
+                timezone_id=self.settings.timezone,
+            )
+            self._page = await self._context.new_page()
+        except Exception as error:
+            logger.warning("browser did not start: {reason}", reason=describe(error))
+            return LoginStep(
+                status="failed", hint=f"browser did not start, {describe(error, password)}"
+            )
+
         page = self._page
 
-        await page.goto(
-            self.settings.avito_base_url,
-            wait_until="domcontentloaded",
-            timeout=self.settings.parser_nav_timeout_ms,
-        )
+        try:
+            await page.goto(
+                self.settings.avito_base_url,
+                wait_until="commit",
+                timeout=self.settings.parser_nav_timeout_ms,
+            )
+        except Exception as error:
+            logger.warning("login navigation failed: {reason}", reason=describe(error))
+            transport = mask_proxy_url(requested) if requested else "direct connection"
+            return LoginStep(
+                status="failed",
+                hint=f"could not open avito over {transport}, {describe(error, password)}",
+            )
 
         try:
             await page.wait_for_selector(
@@ -134,12 +170,29 @@ class PlaywrightAvitoAuthClient:
         except Exception:
             return await self._classify("the login form never opened")
 
-        await self._type(page, LOGIN_INPUT, login)
-        await self._type(page, PASSWORD_INPUT, password)
-        await page.click(SUBMIT_BUTTON)
+        try:
+            await self._type(page, LOGIN_INPUT, login)
+            await self._type(page, PASSWORD_INPUT, password)
+            await self._submit(page)
+        except Exception as error:
+            logger.warning("filling the login form failed: {reason}", reason=describe(error))
+            return LoginStep(
+                status="failed",
+                hint=f"could not fill the login form, {describe(error, password)}",
+            )
+
         await page.wait_for_timeout(self.settings.login_settle_ms)
 
         return await self._classify("avito rejected the sign in")
+
+    async def _submit(self, page: Page) -> None:
+        try:
+            await page.click(SUBMIT_BUTTON, timeout=self.settings.login_wait_ms)
+        except Exception as error:
+            logger.debug(
+                "submit click intercepted, falling back to js: {reason}", reason=describe(error)
+            )
+            await page.evaluate(OPEN_LOGIN_SCRIPT, SUBMIT_BUTTON)
 
     async def submit_code(self, code: str) -> LoginStep:
         page = self._require_page()
@@ -189,7 +242,7 @@ class PlaywrightAvitoAuthClient:
 
     async def _type(self, page: Page, selector: str, value: str) -> None:
         field = page.locator(selector)
-        await field.click()
+        await field.wait_for(state="visible", timeout=self.settings.login_wait_ms)
         await field.fill("")
         await field.press_sequentially(
             value,
