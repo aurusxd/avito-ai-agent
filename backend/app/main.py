@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from sqlalchemy import text
 
+from app.accounts.router import router as accounts_router
 from app.categories.router import router as categories_router
 from app.config import get_settings
 from app.db.base import engine
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     )
     register_error_handlers(app)
     app.include_router(system_router)
+    app.include_router(accounts_router, prefix="/api")
     app.include_router(categories_router, prefix="/api")
     app.include_router(parser_router, prefix="/api")
     return app

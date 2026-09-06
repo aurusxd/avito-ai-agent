@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.rotation import MAX_DAILY_LIMIT, AccountStatusLiteral
+
 Stage = Literal[1, 2, 3]
 SellerStatusLiteral = Literal["new", "contacted", "interested", "lead", "rejected"]
 MessageStatusLiteral = Literal["sent", "failed", "skipped"]
@@ -96,3 +98,51 @@ class ParserRunResult(BaseModel):
     sellers_updated: int = 0
     listings_created: int = 0
     listings_updated: int = 0
+
+
+class AccountBase(BaseModel):
+    login: str = Field(min_length=1, max_length=255)
+    session_storage_path: str = Field(min_length=1, max_length=512)
+    daily_limit: int = Field(default=MAX_DAILY_LIMIT, ge=1, le=MAX_DAILY_LIMIT)
+
+
+class AccountCreate(AccountBase):
+    pass
+
+
+class AccountUpdate(BaseModel):
+    login: str | None = Field(default=None, min_length=1, max_length=255)
+    session_storage_path: str | None = Field(default=None, min_length=1, max_length=512)
+    daily_limit: int | None = Field(default=None, ge=1, le=MAX_DAILY_LIMIT)
+    status: AccountStatusLiteral | None = None
+
+
+class AccountRead(AccountBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: AccountStatusLiteral
+    daily_message_count: int
+    remaining_today: int
+    has_session: bool
+    last_reset_at: datetime
+    created_at: datetime
+
+
+class RotationMember(BaseModel):
+    account_id: int
+    login: str
+    status: AccountStatusLiteral
+    remaining_today: int
+    in_rotation: bool
+    available: bool
+
+
+class RotationPreview(BaseModel):
+    rotation_size: int
+    delay_min_minutes: int
+    delay_max_minutes: int
+    daily_limit: int
+    next_account_id: int | None = None
+    capacity_today: int = 0
+    members: list[RotationMember] = Field(default_factory=list)
