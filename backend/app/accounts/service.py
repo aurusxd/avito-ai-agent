@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import BACKEND_ROOT, Settings
 from app.db.models import Account, AppSettings
+from app.domain.proxy import mask_proxy_url
 from app.domain.rotation import (
     AccountState,
     RotationSettings,
@@ -52,6 +53,7 @@ class AccountService:
             login=payload.login,
             session_storage_path=payload.session_storage_path,
             daily_limit=clamp_daily_limit(payload.daily_limit),
+            proxy_url=payload.proxy_url,
         )
         self.session.add(account)
         await self.session.commit()
@@ -92,6 +94,7 @@ class AccountService:
                 remaining_today=remaining_quota(state, now, self.timezone),
                 in_rotation=state.id in member_ids,
                 available=state.id in member_ids and is_available(state, now, self.timezone),
+                paused_until=state.paused_until,
             )
             for state in states
         ]
@@ -151,12 +154,17 @@ class AccountService:
             login=account.login,
             session_storage_path=account.session_storage_path,
             daily_limit=clamp_daily_limit(account.daily_limit),
+            proxy_url=mask_proxy_url(account.proxy_url),
             status=state.status,
             daily_message_count=account.daily_message_count,
             remaining_today=remaining_quota(state, now, self.timezone),
             has_session=self._session_file_exists(account.session_storage_path),
+            has_proxy=bool(account.proxy_url),
             last_reset_at=_as_utc(account.last_reset_at),
             created_at=_as_utc(account.created_at),
+            paused_until=state.paused_until,
+            last_block_kind=account.last_block_kind.value if account.last_block_kind else None,
+            last_block_at=_as_utc(account.last_block_at) if account.last_block_at else None,
         )
 
     def _session_file_exists(self, raw_path: str) -> bool:

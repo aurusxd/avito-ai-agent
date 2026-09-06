@@ -25,6 +25,9 @@ class SendResult(BaseModel):
 
 
 class AvitoBlockedError(RuntimeError):
+    block_kind: BlockKindLiteral
+    retry_after_seconds: int | None
+
     def __init__(
         self,
         message: str,

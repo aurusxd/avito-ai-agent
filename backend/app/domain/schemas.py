@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.rotation import MAX_DAILY_LIMIT, AccountStatusLiteral
+from app.domain.rotation import MAX_DAILY_LIMIT, AccountStatusLiteral, BlockKindLiteral
 
 Stage = Literal[1, 2, 3]
 SellerStatusLiteral = Literal["new", "contacted", "interested", "lead", "rejected"]
@@ -104,6 +104,7 @@ class AccountBase(BaseModel):
     login: str = Field(min_length=1, max_length=255)
     session_storage_path: str = Field(min_length=1, max_length=512)
     daily_limit: int = Field(default=MAX_DAILY_LIMIT, ge=1, le=MAX_DAILY_LIMIT)
+    proxy_url: str | None = Field(default=None, max_length=512)
 
 
 class AccountCreate(AccountBase):
@@ -115,6 +116,7 @@ class AccountUpdate(BaseModel):
     session_storage_path: str | None = Field(default=None, min_length=1, max_length=512)
     daily_limit: int | None = Field(default=None, ge=1, le=MAX_DAILY_LIMIT)
     status: AccountStatusLiteral | None = None
+    proxy_url: str | None = Field(default=None, max_length=512)
 
 
 class AccountRead(AccountBase):
@@ -125,8 +127,12 @@ class AccountRead(AccountBase):
     daily_message_count: int
     remaining_today: int
     has_session: bool
+    has_proxy: bool
     last_reset_at: datetime
     created_at: datetime
+    paused_until: datetime | None = None
+    last_block_kind: BlockKindLiteral | None = None
+    last_block_at: datetime | None = None
 
 
 class RotationMember(BaseModel):
@@ -136,6 +142,7 @@ class RotationMember(BaseModel):
     remaining_today: int
     in_rotation: bool
     available: bool
+    paused_until: datetime | None = None
 
 
 class RotationPreview(BaseModel):
@@ -146,3 +153,34 @@ class RotationPreview(BaseModel):
     next_account_id: int | None = None
     capacity_today: int = 0
     members: list[RotationMember] = Field(default_factory=list)
+
+
+class OutreachRequest(BaseModel):
+    seller_id: int = Field(ge=1)
+    stage: Stage
+    account_id: int | None = Field(default=None, ge=1)
+
+
+class OutreachResult(BaseModel):
+    seller_id: int
+    stage: Stage
+    status: MessageStatusLiteral
+    account_id: int | None = None
+    message_log_id: int | None = None
+    variant_used: int | None = None
+    block_kind: BlockKindLiteral = "none"
+    reason: str | None = None
+    already_sent: bool = False
+
+
+class MessageLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    seller_id: int
+    account_id: int
+    stage: Stage
+    variant_used: int
+    final_text: str
+    sent_at: datetime
+    status: MessageStatusLiteral
