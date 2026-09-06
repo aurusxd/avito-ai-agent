@@ -5,6 +5,13 @@ from pydantic import BaseModel, Field
 from app.domain.schemas import SentimentLiteral
 
 
+class AIUnavailableError(RuntimeError):
+    def __init__(self, message: str, provider: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.status_code = status_code
+
+
 class AIVariationRequest(BaseModel):
     template_text: str = Field(min_length=1)
     seller_name: str = Field(min_length=1)

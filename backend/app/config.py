@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     parser_profile_settle_ms: int = Field(default=1_500, ge=0)
     parser_retry_backoff_seconds: float = Field(default=3.0, ge=0.0)
 
+    ai_client: Literal["fake", "deepseek", "openai", "chain"] = "fake"
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o-mini"
+    ai_timeout_seconds: float = Field(default=30.0, ge=1.0)
+    ai_max_retries: int = Field(default=2, ge=0, le=5)
+    ai_retry_backoff_seconds: float = Field(default=1.5, ge=0.0)
+    ai_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+    ai_max_tokens: int = Field(default=300, ge=32)
+    ai_max_variation_length: int = Field(default=500, ge=32)
+
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:4173"]
     panel_api_token: str = "dev-panel-token"
 
