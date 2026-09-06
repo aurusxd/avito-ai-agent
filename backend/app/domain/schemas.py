@@ -202,3 +202,34 @@ class VariationResult(BaseModel):
     source: VariationSourceLiteral
     provider: str | None = None
     reason: str | None = None
+
+
+class ReplyCreate(BaseModel):
+    seller_id: int = Field(ge=1)
+    message_log_id: int = Field(ge=1)
+    reply_text: str = Field(min_length=1)
+    external_id: str | None = Field(default=None, min_length=1, max_length=255)
+    received_at: datetime | None = None
+
+
+class ReplyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    seller_id: int
+    message_log_id: int
+    reply_text: str
+    external_id: str | None = None
+    received_at: datetime
+    ai_sentiment: SentimentLiteral | None = None
+    ai_confidence: float | None = None
+    analyzed_at: datetime | None = None
+
+
+class ReplyAnalysisResult(BaseModel):
+    reply: ReplyRead
+    seller_status: SellerStatusLiteral
+    status_changed: bool = False
+    provider: str | None = None
+    reason: str | None = None
+    already_analyzed: bool = False

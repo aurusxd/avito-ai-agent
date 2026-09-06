@@ -1,14 +1,21 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai_pipeline.analysis import ReplyAnalysisService
 from app.ai_pipeline.service import VariationService
 from app.clients.ai import get_ai_client
 from app.clients.ai.base import AIClient
 from app.config import Settings, get_settings
 from app.db.base import get_session
-from app.domain.schemas import VariationRequest, VariationResult
+from app.domain.schemas import (
+    ReplyAnalysisResult,
+    ReplyCreate,
+    ReplyRead,
+    VariationRequest,
+    VariationResult,
+)
 from app.security import require_panel_token
 
 router = APIRouter(
@@ -29,6 +36,34 @@ def get_service(session: SessionDep, client: ClientDep, settings: SettingsDep) -
 ServiceDep = Annotated[VariationService, Depends(get_service)]
 
 
+def get_analysis_service(
+    session: SessionDep, client: ClientDep, settings: SettingsDep
+) -> ReplyAnalysisService:
+    return ReplyAnalysisService(session, client, settings)
+
+
+AnalysisDep = Annotated[ReplyAnalysisService, Depends(get_analysis_service)]
+
+
 @router.post("/variations/preview", response_model=VariationResult)
 async def preview_variation(payload: VariationRequest, service: ServiceDep) -> VariationResult:
     return await service.preview(payload)
+
+
+@router.post(
+    "/replies",
+    response_model=ReplyAnalysisResult,
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_reply(payload: ReplyCreate, service: AnalysisDep) -> ReplyAnalysisResult:
+    return await service.register(payload)
+
+
+@router.post("/replies/{reply_id}/analyze", response_model=ReplyAnalysisResult)
+async def analyze_reply(reply_id: int, service: AnalysisDep) -> ReplyAnalysisResult:
+    return await service.analyze(reply_id)
+
+
+@router.get("/replies", response_model=list[ReplyRead])
+async def list_replies(service: AnalysisDep, seller_id: int | None = None) -> list[ReplyRead]:
+    return await service.list_replies(seller_id)
