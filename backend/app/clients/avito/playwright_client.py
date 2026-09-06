@@ -16,7 +16,12 @@ from playwright.async_api import (
     Error as PlaywrightError,
 )
 
-from app.clients.avito.base import AvitoAccountRef, ParserResult, SendResult
+from app.clients.avito.base import (
+    AvitoAccountRef,
+    AvitoBlockedError,
+    ParserResult,
+    SendResult,
+)
 from app.config import Settings, get_settings
 from app.domain.schemas import CategoryDTO, ListingDTO, SellerDTO
 
@@ -60,10 +65,6 @@ PROFILE_SCRIPT = """
   };
 }
 """
-
-
-class AvitoBlockedError(RuntimeError):
-    pass
 
 
 def _parse_pairs(query: str) -> list[tuple[str, str]]:

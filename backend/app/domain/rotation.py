@@ -4,12 +4,26 @@ from random import Random
 from typing import Literal
 
 AccountStatusLiteral = Literal["active", "paused", "banned"]
+BlockKindLiteral = Literal[
+    "none",
+    "captcha",
+    "rate_limited",
+    "forbidden",
+    "auth_required",
+    "unavailable",
+]
 
 MAX_DAILY_LIMIT = 15
 MIN_DELAY_MINUTES = 5
 MAX_DELAY_MINUTES = 15
 MIN_ROTATION_SIZE = 2
 MAX_ROTATION_SIZE = 3
+
+COOLDOWN_MINUTES: dict[BlockKindLiteral, int] = {
+    "captcha": 60,
+    "rate_limited": 30,
+}
+BANNING_BLOCKS: frozenset[BlockKindLiteral] = frozenset({"forbidden", "auth_required"})
 
 
 @dataclass(frozen=True)
@@ -20,6 +34,7 @@ class AccountState:
     daily_message_count: int
     daily_limit: int
     last_reset_at: datetime
+    paused_until: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -66,16 +81,44 @@ def remaining_quota(state: AccountState, now: datetime, tz: tzinfo) -> int:
     return max(0, limit - state.daily_message_count)
 
 
+def is_cooling_down(state: AccountState, now: datetime) -> bool:
+    return state.paused_until is not None and state.paused_until > now
+
+
+def resume_if_cooled(state: AccountState, now: datetime) -> AccountState:
+    if state.status != "paused" or is_cooling_down(state, now):
+        return state
+    if state.paused_until is None:
+        return state
+    return replace(state, status="active", paused_until=None)
+
+
+def apply_block(
+    state: AccountState,
+    block_kind: BlockKindLiteral,
+    now: datetime,
+    retry_after_seconds: int | None = None,
+) -> AccountState:
+    if block_kind in BANNING_BLOCKS:
+        return replace(state, status="banned", paused_until=None)
+    if block_kind not in COOLDOWN_MINUTES:
+        return state
+    cooldown = timedelta(seconds=retry_after_seconds or COOLDOWN_MINUTES[block_kind] * 60)
+    return replace(state, status="paused", paused_until=now + cooldown)
+
+
 def is_available(state: AccountState, now: datetime, tz: tzinfo) -> bool:
-    return state.status == "active" and remaining_quota(state, now, tz) > 0
+    current = resume_if_cooled(state, now)
+    return current.status == "active" and remaining_quota(current, now, tz) > 0
 
 
 def rotation_members(
     states: list[AccountState],
     settings: RotationSettings,
+    now: datetime,
 ) -> tuple[AccountState, ...]:
-    active = sorted((s for s in states if s.status == "active"), key=lambda s: s.id)
-    return tuple(active[: settings.rotation_size])
+    resumed = (s for s in states if resume_if_cooled(s, now).status == "active")
+    return tuple(sorted(resumed, key=lambda s: s.id)[: settings.rotation_size])
 
 
 def select_account(
@@ -84,7 +127,7 @@ def select_account(
     now: datetime,
     tz: tzinfo,
 ) -> AccountState | None:
-    candidates = [s for s in rotation_members(states, settings) if is_available(s, now, tz)]
+    candidates = [s for s in rotation_members(states, settings, now) if is_available(s, now, tz)]
     if not candidates:
         return None
     return min(candidates, key=lambda s: (-remaining_quota(s, now, tz), s.id))

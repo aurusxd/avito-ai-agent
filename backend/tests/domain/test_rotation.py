@@ -6,6 +6,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.domain.rotation import (
+    BANNING_BLOCKS,
+    COOLDOWN_MINUTES,
     MAX_DAILY_LIMIT,
     MAX_DELAY_MINUTES,
     MAX_ROTATION_SIZE,
@@ -13,7 +15,9 @@ from app.domain.rotation import (
     MIN_ROTATION_SIZE,
     AccountState,
     AccountStatusLiteral,
+    BlockKindLiteral,
     RotationSettings,
+    apply_block,
     apply_daily_reset,
     clamp_daily_limit,
     clamp_settings,
@@ -23,6 +27,7 @@ from app.domain.rotation import (
     next_send_at,
     register_send,
     remaining_quota,
+    resume_if_cooled,
     rotation_members,
     select_account,
 )
@@ -130,11 +135,11 @@ def test_apply_daily_reset_is_idempotent(state: AccountState, now: datetime) -> 
     assert not needs_daily_reset(once, now, UTC)
 
 
-@given(states=st.lists(account_states(), max_size=8), settings=raw_settings())
+@given(states=st.lists(account_states(), max_size=8), settings=raw_settings(), now=aware_datetimes)
 def test_rotation_members_respect_size_and_status(
-    states: list[AccountState], settings: RotationSettings
+    states: list[AccountState], settings: RotationSettings, now: datetime
 ) -> None:
-    members = rotation_members(states, settings)
+    members = rotation_members(states, settings, now)
 
     assert len(members) <= settings.rotation_size
     assert all(member.status == "active" for member in members)
@@ -145,7 +150,7 @@ def test_rotation_members_respect_size_and_status(
 def test_select_account_only_returns_available_member(
     states: list[AccountState], settings: RotationSettings, now: datetime
 ) -> None:
-    members = rotation_members(states, settings)
+    members = rotation_members(states, settings, now)
     selected = select_account(states, settings, now, UTC)
     available = [member for member in members if is_available(member, now, UTC)]
 
@@ -178,7 +183,7 @@ def test_rotation_size_keeps_extra_accounts_out() -> None:
     settings = clamp_settings(5, 15, 2)
     states = [account(id=1), account(id=2), account(id=3)]
 
-    assert [member.id for member in rotation_members(states, settings)] == [1, 2]
+    assert [member.id for member in rotation_members(states, settings, NOW)] == [1, 2]
 
 
 def test_paused_and_banned_accounts_never_selected() -> None:
@@ -239,3 +244,64 @@ def test_rotation_spreads_load_evenly_over_a_day() -> None:
 
     assert len(sent) == 45
     assert [sent.count(index) for index in (1, 2, 3)] == [15, 15, 15]
+
+
+@given(state=account_states(), kind=st.sampled_from(list(COOLDOWN_MINUTES)))
+def test_cooldown_block_pauses_without_banning(state: AccountState, kind: BlockKindLiteral) -> None:
+    blocked = apply_block(state, kind, NOW)
+
+    assert blocked.status == "paused"
+    assert blocked.paused_until == NOW + timedelta(minutes=COOLDOWN_MINUTES[kind])
+    assert is_available(blocked, NOW, UTC) is False
+
+
+@given(state=account_states(), kind=st.sampled_from(sorted(BANNING_BLOCKS)))
+def test_hard_block_bans_without_cooldown(state: AccountState, kind: BlockKindLiteral) -> None:
+    blocked = apply_block(state, kind, NOW)
+
+    assert blocked.status == "banned"
+    assert blocked.paused_until is None
+    assert is_available(blocked, NOW, UTC) is False
+    assert resume_if_cooled(blocked, NOW + timedelta(days=7)).status == "banned"
+
+
+@given(state=account_states())
+def test_unavailable_block_leaves_state_untouched(state: AccountState) -> None:
+    assert apply_block(state, "unavailable", NOW) == state
+    assert apply_block(state, "none", NOW) == state
+
+
+def test_rate_limited_block_honours_retry_after() -> None:
+    blocked = apply_block(account(), "rate_limited", NOW, retry_after_seconds=90)
+
+    assert blocked.paused_until == NOW + timedelta(seconds=90)
+
+
+def test_account_returns_to_rotation_after_cooldown() -> None:
+    settings = clamp_settings(5, 15, 3)
+    blocked = apply_block(account(id=1), "captcha", NOW)
+    partner = account(id=2)
+
+    assert select_account([blocked, partner], settings, NOW, UTC) is not None
+    assert select_account([blocked, partner], settings, NOW, UTC).id == 2  # type: ignore[union-attr]
+    assert [m.id for m in rotation_members([blocked, partner], settings, NOW)] == [2]
+
+    later = NOW + timedelta(minutes=COOLDOWN_MINUTES["captcha"] + 1)
+    resumed = resume_if_cooled(blocked, later)
+
+    assert resumed.status == "active"
+    assert resumed.paused_until is None
+    assert is_available(blocked, later, UTC) is True
+    assert [m.id for m in rotation_members([blocked, partner], settings, later)] == [1, 2]
+
+
+def test_blocked_account_is_skipped_while_cooling_down() -> None:
+    settings = clamp_settings(5, 15, 3)
+    blocked = apply_block(account(id=1), "captcha", NOW)
+    partner = account(id=2)
+
+    midway = NOW + timedelta(minutes=30)
+    selected = select_account([blocked, partner], settings, midway, UTC)
+
+    assert selected is not None
+    assert selected.id == 2

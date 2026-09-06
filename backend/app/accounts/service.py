@@ -81,7 +81,7 @@ class AccountService:
         settings = await self.rotation_settings()
         accounts = list(await self.session.scalars(select(Account).order_by(Account.id)))
         states = [self._to_state(account) for account in accounts]
-        member_ids = {member.id for member in rotation_members(states, settings)}
+        member_ids = {member.id for member in rotation_members(states, settings, now)}
         selected = select_account(states, settings, now, self.timezone)
 
         members = [
@@ -141,6 +141,7 @@ class AccountService:
             daily_message_count=account.daily_message_count,
             daily_limit=account.daily_limit,
             last_reset_at=_as_utc(account.last_reset_at),
+            paused_until=_as_utc(account.paused_until) if account.paused_until else None,
         )
 
     def _to_read(self, account: Account, now: datetime) -> AccountRead:

@@ -1,6 +1,11 @@
 from datetime import UTC, datetime
 
-from app.clients.avito.base import AvitoAccountRef, ParserResult, SendResult
+from app.clients.avito.base import (
+    AvitoAccountRef,
+    AvitoBlockedError,
+    ParserResult,
+    SendResult,
+)
 from app.db.seed import SEED_PARSER_RESULTS
 from app.domain.schemas import CategoryDTO, SellerDTO
 
@@ -11,10 +16,14 @@ class FakeAvitoClient:
         results: list[ParserResult] | None = None,
         failure: Exception | None = None,
         fail_times: int = 0,
+        block: AvitoBlockedError | None = None,
+        block_times: int = 0,
     ) -> None:
         self.results = results if results is not None else list(SEED_PARSER_RESULTS)
         self.failure = failure
         self.fail_times = fail_times
+        self.block = block
+        self.block_times = block_times
         self.parsed_categories: list[CategoryDTO] = []
         self.sent: list[tuple[int, str, str]] = []
 
@@ -22,6 +31,11 @@ class FakeAvitoClient:
         if self.failure is not None and self.fail_times > 0:
             self.fail_times -= 1
             raise self.failure
+
+    def _maybe_block(self) -> None:
+        if self.block is not None and self.block_times > 0:
+            self.block_times -= 1
+            raise self.block
 
     async def parse_category(self, category: CategoryDTO) -> list[ParserResult]:
         validated = CategoryDTO.model_validate(category)
@@ -40,6 +54,7 @@ class FakeAvitoClient:
         validated_seller = SellerDTO.model_validate(seller)
         if not text.strip():
             raise ValueError("message text must not be empty")
+        self._maybe_block()
         try:
             self._maybe_fail()
         except Exception as error:
