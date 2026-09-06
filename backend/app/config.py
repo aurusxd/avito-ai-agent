@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     ai_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
     ai_max_tokens: int = Field(default=300, ge=32)
     ai_max_variation_length: int = Field(default=500, ge=32)
+    ai_sentiment_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:4173"]
     panel_api_token: str = "dev-panel-token"

@@ -11,6 +11,7 @@ from app.clients.ai.base import (
     AIVariationResponse,
 )
 from app.config import Settings, get_settings
+from app.domain.replies import parse_sentiment_payload
 
 REWRITE_SYSTEM_PROMPT = (
     "Ты помогаешь переписывать короткие деловые сообщения продавцам на Авито. "
@@ -21,7 +22,22 @@ REWRITE_SYSTEM_PROMPT = (
     "Держись в пределах двух предложений."
 )
 
+ANALYSIS_SYSTEM_PROMPT = (
+    "Ты классифицируешь ответы продавцов на Авито на холодное сообщение. "
+    "Верни строго один JSON-объект с полями sentiment и confidence, "
+    "без markdown, без пояснений и без текста вокруг. "
+    "sentiment принимает ровно одно из значений: interested, neutral, negative. "
+    "interested — продавец готов обсуждать, спрашивает детали, соглашается. "
+    "neutral — ответ без явного интереса и без отказа, например отписка или уточнение. "
+    "negative — отказ, просьба не писать, грубость. "
+    "confidence — твоя уверенность, дробное число от 0 до 1."
+)
+
 RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+
+def build_analysis_prompt(request: AIAnalysisRequest) -> str:
+    return f"Ответ продавца:\n{request.reply_text}\n\nКлассифицируй этот ответ."
 
 
 def build_rewrite_prompt(request: AIVariationRequest) -> str:
@@ -59,9 +75,17 @@ class OpenAICompatibleClient:
         return AIVariationResponse(unique_text=content)
 
     async def analyze_reply(self, request: AIAnalysisRequest) -> AIAnalysisResponse:
-        raise NotImplementedError(
-            "reply analysis lands with roadmap item 5, use FakeAIClient until then"
-        )
+        validated = AIAnalysisRequest.model_validate(request)
+        content = await self._chat(ANALYSIS_SYSTEM_PROMPT, build_analysis_prompt(validated))
+
+        parsed = parse_sentiment_payload(content)
+        if parsed is None:
+            raise AIUnavailableError(
+                f"{self.provider} returned an unclassifiable answer", self.provider
+            )
+
+        sentiment, confidence = parsed
+        return AIAnalysisResponse(sentiment=sentiment, confidence=confidence)
 
     async def _chat(self, system_prompt: str, user_prompt: str) -> str:
         if not self.api_key:

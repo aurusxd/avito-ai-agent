@@ -2,7 +2,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from app.clients.ai.base import AIUnavailableError, AIVariationRequest
+from app.clients.ai.base import AIAnalysisRequest, AIUnavailableError, AIVariationRequest
 from app.clients.ai.deepseek import DeepSeekClient
 from app.clients.ai.openai_fallback import OpenAIFallbackClient
 from app.config import Settings
@@ -205,10 +205,66 @@ async def test_garbage_request_is_rejected_before_any_call() -> None:
     assert calls == 0
 
 
-async def test_reply_analysis_is_not_implemented_yet() -> None:
-    client = DeepSeekClient(
-        settings(), transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
+async def test_analyze_reply_parses_the_json_answer() -> None:
+    seen: list[httpx.Request] = []
 
-    with pytest.raises(NotImplementedError):
-        await client.analyze_reply({"reply_text": "да"})  # type: ignore[arg-type]
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200, json=completion('{"sentiment": "interested", "confidence": 0.83}')
+        )
+
+    client = DeepSeekClient(settings(), transport=httpx.MockTransport(handler))
+
+    response = await client.analyze_reply(AIAnalysisRequest(reply_text="Да, расскажите"))
+
+    assert response.sentiment == "interested"
+    assert response.confidence == 0.83
+
+    import json
+
+    body = json.loads(seen[0].content)
+    assert "Да, расскажите" in body["messages"][1]["content"]
+
+
+async def test_analyze_reply_accepts_a_fenced_json_answer() -> None:
+    fenced = """Готово:
+```json
+{"sentiment": "negative", "confidence": 0.9}
+```"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=completion(fenced))
+
+    client = DeepSeekClient(settings(), transport=httpx.MockTransport(handler))
+
+    response = await client.analyze_reply(AIAnalysisRequest(reply_text="Не пишите"))
+
+    assert response.sentiment == "negative"
+    assert response.confidence == 0.9
+
+
+async def test_unclassifiable_answer_is_reported_as_unavailable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=completion("продавец вроде бы заинтересован"))
+
+    client = DeepSeekClient(settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(AIUnavailableError):
+        await client.analyze_reply(AIAnalysisRequest(reply_text="Да"))
+
+
+async def test_analyze_reply_rejects_garbage_before_any_call() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=completion("{}"))
+
+    client = DeepSeekClient(settings(), transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValidationError):
+        await client.analyze_reply({"reply_text": ""})  # type: ignore[arg-type]
+
+    assert calls == 0
