@@ -33,3 +33,7 @@ node_modules/
 .svelte-kit/
 frontend/build/
 
+
+# Dry-run screenshots
+proxy_*.png
+dry_run_*.png
