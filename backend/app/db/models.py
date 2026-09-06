@@ -29,6 +29,15 @@ class AccountStatus(StrEnum):
     BANNED = "banned"
 
 
+class BlockKind(StrEnum):
+    NONE = "none"
+    CAPTCHA = "captcha"
+    RATE_LIMITED = "rate_limited"
+    FORBIDDEN = "forbidden"
+    AUTH_REQUIRED = "auth_required"
+    UNAVAILABLE = "unavailable"
+
+
 class SellerStatus(StrEnum):
     NEW = "new"
     CONTACTED = "contacted"
@@ -71,6 +80,12 @@ class Account(Base):
     daily_limit: Mapped[int] = mapped_column(Integer, default=15)
     last_reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    proxy_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_block_kind: Mapped[BlockKind | None] = mapped_column(
+        _enum_column(BlockKind, "block_kind"), nullable=True
+    )
+    last_block_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Category(Base):
