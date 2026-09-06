@@ -11,6 +11,8 @@ NEGATIVE_MARKERS = ("нет", "не интересно", "не пишите", "�
 
 
 class FakeAIClient:
+    provider = "fake"
+
     def __init__(self, failure: Exception | None = None, fail_times: int = 0) -> None:
         self.failure = failure
         self.fail_times = fail_times

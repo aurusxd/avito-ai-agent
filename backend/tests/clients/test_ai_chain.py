@@ -105,4 +105,4 @@ async def test_analysis_also_falls_back() -> None:
     response = await chain.analyze_reply(AIAnalysisRequest(reply_text="Да, интересно"))
 
     assert response.sentiment == "interested"
-    assert chain.last_provider == "FakeAIClient"
+    assert chain.last_provider == "fake"

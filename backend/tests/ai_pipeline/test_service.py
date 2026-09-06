@@ -175,6 +175,7 @@ async def test_fake_client_keeps_the_template_meaning(session: AsyncSession) -> 
     assert result.final_text == RENDERED
     assert result.reason == "not_rewritten"
     assert result.source == "ai"
+    assert result.provider == "fake"
 
 
 async def test_unknown_seller_raises_not_found(session: AsyncSession) -> None:
