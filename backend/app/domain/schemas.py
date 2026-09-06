@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.rotation import MAX_DAILY_LIMIT, AccountStatusLiteral, BlockKindLiteral
+from app.domain.variation import VariationSourceLiteral
 
 Stage = Literal[1, 2, 3]
 SellerStatusLiteral = Literal["new", "contacted", "interested", "lead", "rejected"]
@@ -184,3 +185,20 @@ class MessageLogRead(BaseModel):
     final_text: str
     sent_at: datetime
     status: MessageStatusLiteral
+
+
+class VariationRequest(BaseModel):
+    seller_id: int = Field(ge=1)
+    stage: Stage
+    variant_index: int | None = Field(default=None, ge=1, le=5)
+
+
+class VariationResult(BaseModel):
+    seller_id: int
+    stage: Stage
+    variant_used: int
+    template_text: str
+    final_text: str
+    source: VariationSourceLiteral
+    provider: str | None = None
+    reason: str | None = None
