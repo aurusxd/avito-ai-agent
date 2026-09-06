@@ -321,6 +321,18 @@
 										use:enhance
 										bind:this={toggleForms[account.id]}
 									>
+										<input
+											type="hidden"
+											name="id"
+											value={account.id}
+										/>
+										<input
+											type="hidden"
+											name="status"
+											value={account.status === "active"
+												? "paused"
+												: "active"}
+										/>
 										<Switch
 											checked={account.status ===
 												"active"}
