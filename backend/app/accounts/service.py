@@ -5,11 +5,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.accounts.state import as_utc, to_state
 from app.config import BACKEND_ROOT, Settings
 from app.db.models import Account, AppSettings
 from app.domain.proxy import mask_proxy_url
 from app.domain.rotation import (
-    AccountState,
     RotationSettings,
     clamp_daily_limit,
     clamp_settings,
@@ -26,10 +26,6 @@ from app.domain.schemas import (
     RotationPreview,
 )
 from app.errors import ConflictError, NotFoundError
-
-
-def _as_utc(value: datetime) -> datetime:
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class AccountService:
@@ -82,7 +78,7 @@ class AccountService:
         now = datetime.now(UTC)
         settings = await self.rotation_settings()
         accounts = list(await self.session.scalars(select(Account).order_by(Account.id)))
-        states = [self._to_state(account) for account in accounts]
+        states = [to_state(account) for account in accounts]
         member_ids = {member.id for member in rotation_members(states, settings, now)}
         selected = select_account(states, settings, now, self.timezone)
 
@@ -136,19 +132,8 @@ class AccountService:
         if await self.session.scalar(query) is not None:
             raise ConflictError(f"account with login {login!r} already exists")
 
-    def _to_state(self, account: Account) -> AccountState:
-        return AccountState(
-            id=account.id,
-            login=account.login,
-            status=account.status.value,
-            daily_message_count=account.daily_message_count,
-            daily_limit=account.daily_limit,
-            last_reset_at=_as_utc(account.last_reset_at),
-            paused_until=_as_utc(account.paused_until) if account.paused_until else None,
-        )
-
     def _to_read(self, account: Account, now: datetime) -> AccountRead:
-        state = self._to_state(account)
+        state = to_state(account)
         return AccountRead(
             id=account.id,
             login=account.login,
@@ -160,11 +145,11 @@ class AccountService:
             remaining_today=remaining_quota(state, now, self.timezone),
             has_session=self._session_file_exists(account.session_storage_path),
             has_proxy=bool(account.proxy_url),
-            last_reset_at=_as_utc(account.last_reset_at),
-            created_at=_as_utc(account.created_at),
+            last_reset_at=as_utc(account.last_reset_at),
+            created_at=as_utc(account.created_at),
             paused_until=state.paused_until,
             last_block_kind=account.last_block_kind.value if account.last_block_kind else None,
-            last_block_at=_as_utc(account.last_block_at) if account.last_block_at else None,
+            last_block_at=as_utc(account.last_block_at) if account.last_block_at else None,
         )
 
     def _session_file_exists(self, raw_path: str) -> bool:

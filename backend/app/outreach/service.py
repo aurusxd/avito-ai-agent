@@ -7,13 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts.service import AccountService
+from app.accounts.state import account_ref, store_state, to_state
 from app.ai_pipeline.service import VariationService
 from app.clients.ai.base import AIClient
-from app.clients.avito.base import AvitoAccountRef, AvitoBlockedError, AvitoClient
+from app.clients.avito.base import AvitoBlockedError, AvitoClient
 from app.config import Settings
 from app.db.models import (
     Account,
-    AccountStatus,
     BlockKind,
     MessageLog,
     MessageStatus,
@@ -22,7 +22,6 @@ from app.db.models import (
     SellerStatus,
 )
 from app.domain.rotation import (
-    AccountState,
     RotationSettings,
     apply_block,
     is_available,
@@ -32,10 +31,6 @@ from app.domain.rotation import (
 )
 from app.domain.schemas import MessageLogRead, OutreachRequest, OutreachResult, SellerDTO
 from app.errors import NotFoundError
-
-
-def _as_utc(value: datetime) -> datetime:
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class OutreachService:
@@ -101,7 +96,7 @@ class OutreachService:
 
         try:
             result = await self.client.send_message(
-                self._account_ref(account),
+                account_ref(account),
                 SellerDTO.model_validate(seller),
                 text,
             )
@@ -120,7 +115,7 @@ class OutreachService:
         self.session.add(log)
 
         if result.status == "sent":
-            self._store_state(account, register_send(self._to_state(account), now, self.timezone))
+            store_state(account, register_send(to_state(account), now, self.timezone))
             if seller.status == SellerStatus.NEW:
                 seller.status = SellerStatus.CONTACTED
 
@@ -159,10 +154,8 @@ class OutreachService:
             kind=error.block_kind,
         )
 
-        blocked = apply_block(
-            self._to_state(account), error.block_kind, now, error.retry_after_seconds
-        )
-        self._store_state(account, blocked)
+        blocked = apply_block(to_state(account), error.block_kind, now, error.retry_after_seconds)
+        store_state(account, blocked)
         account.last_block_kind = BlockKind(error.block_kind)
         account.last_block_at = now
 
@@ -205,18 +198,18 @@ class OutreachService:
             account = by_id.get(account_id)
             if account is None:
                 raise NotFoundError(f"account {account_id} not found")
-            state = resume_if_cooled(self._to_state(account), now)
-            self._store_state(account, state)
+            state = resume_if_cooled(to_state(account), now)
+            store_state(account, state)
             return account if is_available(state, now, self.timezone) else None
 
         settings = await self._rotation_settings()
         selected = select_account(
-            [self._to_state(account) for account in accounts], settings, now, self.timezone
+            [to_state(account) for account in accounts], settings, now, self.timezone
         )
         if selected is None:
             return None
         account = by_id[selected.id]
-        self._store_state(account, resume_if_cooled(selected, now))
+        store_state(account, resume_if_cooled(selected, now))
         return account
 
     async def _rotation_settings(self) -> RotationSettings:
@@ -231,28 +224,3 @@ class OutreachService:
             )
         )
         return self.rng.choice(variants) if variants else None
-
-    def _account_ref(self, account: Account) -> AvitoAccountRef:
-        return AvitoAccountRef(
-            id=account.id,
-            login=account.login,
-            session_storage_path=account.session_storage_path,
-            proxy_url=account.proxy_url,
-        )
-
-    def _to_state(self, account: Account) -> AccountState:
-        return AccountState(
-            id=account.id,
-            login=account.login,
-            status=account.status.value,
-            daily_message_count=account.daily_message_count,
-            daily_limit=account.daily_limit,
-            last_reset_at=_as_utc(account.last_reset_at),
-            paused_until=_as_utc(account.paused_until) if account.paused_until else None,
-        )
-
-    def _store_state(self, account: Account, state: AccountState) -> None:
-        account.status = AccountStatus(state.status)
-        account.daily_message_count = state.daily_message_count
-        account.last_reset_at = state.last_reset_at
-        account.paused_until = state.paused_until
