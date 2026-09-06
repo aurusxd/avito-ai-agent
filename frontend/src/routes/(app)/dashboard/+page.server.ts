@@ -1,6 +1,7 @@
+import { fail } from '@sveltejs/kit';
 import { ApiError, PANEL_TOKEN_COOKIE, apiFetch } from '$lib/api';
-import type { Category } from '$lib/types';
-import type { PageServerLoad } from './$types';
+import type { DashboardStats } from '$lib/types';
+import type { Actions, PageServerLoad } from './$types';
 
 type Health = {
 	status: string;
@@ -8,19 +9,46 @@ type Health = {
 	scheduler: boolean;
 };
 
-export const load: PageServerLoad = async ({ cookies, fetch }) => {
-	const token = cookies.get(PANEL_TOKEN_COOKIE);
+function token(cookies: { get: (name: string) => string | undefined }): string | undefined {
+	return cookies.get(PANEL_TOKEN_COOKIE);
+}
 
+export const load: PageServerLoad = async ({ cookies, fetch }) => {
 	const health = await apiFetch<Health>('/health', { fetch }).catch(() => null);
 
-	let categories: Category[] = [];
-	let loadError: string | null = null;
 	try {
-		categories = await apiFetch<Category[]>('/api/categories', { token, fetch });
+		const stats = await apiFetch<DashboardStats>('/api/dashboard/stats', {
+			token: token(cookies),
+			fetch
+		});
+		return { health, stats, loadError: null };
 	} catch (error) {
-		if (!(error instanceof ApiError)) throw error;
-		loadError = error.message;
+		if (error instanceof ApiError) {
+			return { health, stats: null, loadError: error.message };
+		}
+		throw error;
 	}
+};
 
-	return { health, categories, loadError };
+export const actions: Actions = {
+	pause: async ({ request, cookies, fetch }) => {
+		const form = await request.formData();
+		const paused = form.get('paused') === 'true';
+
+		try {
+			await apiFetch<unknown>('/api/settings', {
+				token: token(cookies),
+				method: 'PATCH',
+				body: { schedule: { paused } },
+				fetch
+			});
+		} catch (error) {
+			if (error instanceof ApiError) {
+				return fail(error.status, { message: error.message });
+			}
+			throw error;
+		}
+
+		return { message: paused ? 'Бот на паузе' : 'Бот запущен' };
+	}
 };

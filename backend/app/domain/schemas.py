@@ -349,3 +349,33 @@ class BotSettingsRead(BaseModel):
     window_open_now: bool = False
     next_window_at: datetime | None = None
     closed_reason: str | None = None
+
+
+class StageStat(BaseModel):
+    stage: Stage
+    sent: int = 0
+    failed: int = 0
+    skipped: int = 0
+
+
+class DashboardStats(BaseModel):
+    categories_enabled: int = 0
+    sellers_total: int = 0
+    sellers_contacted: int = 0
+    sellers_interested: int = 0
+    sellers_rejected: int = 0
+    leads_total: int = 0
+    leads_delivered: int = 0
+    replies_total: int = 0
+    replies_analyzed: int = 0
+    messages_sent: int = 0
+    messages_failed: int = 0
+    messages_today: int = 0
+    stages: list[StageStat] = Field(default_factory=list)
+    accounts_active: int = 0
+    accounts_blocked: int = 0
+    capacity_today: int = 0
+    paused: bool = False
+    window_open_now: bool = False
+    closed_reason: str | None = None
+    next_window_at: datetime | None = None

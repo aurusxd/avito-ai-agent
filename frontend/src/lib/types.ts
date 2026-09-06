@@ -133,3 +133,33 @@ export type BotSettings = {
 	next_window_at: string | null;
 	closed_reason: string | null;
 };
+
+export type StageStat = {
+	stage: Stage;
+	sent: number;
+	failed: number;
+	skipped: number;
+};
+
+export type DashboardStats = {
+	categories_enabled: number;
+	sellers_total: number;
+	sellers_contacted: number;
+	sellers_interested: number;
+	sellers_rejected: number;
+	leads_total: number;
+	leads_delivered: number;
+	replies_total: number;
+	replies_analyzed: number;
+	messages_sent: number;
+	messages_failed: number;
+	messages_today: number;
+	stages: StageStat[];
+	accounts_active: number;
+	accounts_blocked: number;
+	capacity_today: number;
+	paused: boolean;
+	window_open_now: boolean;
+	closed_reason: string | null;
+	next_window_at: string | null;
+};
