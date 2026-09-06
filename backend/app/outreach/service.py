@@ -7,14 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts.service import AccountService
+from app.ai_pipeline.service import VariationService
+from app.clients.ai.base import AIClient
 from app.clients.avito.base import AvitoAccountRef, AvitoBlockedError, AvitoClient
 from app.config import Settings
 from app.db.models import (
     Account,
     AccountStatus,
     BlockKind,
-    Category,
-    Listing,
     MessageLog,
     MessageStatus,
     Script,
@@ -31,11 +31,7 @@ from app.domain.rotation import (
     select_account,
 )
 from app.domain.schemas import MessageLogRead, OutreachRequest, OutreachResult, SellerDTO
-from app.domain.templates import render_template
 from app.errors import NotFoundError
-
-FALLBACK_PRODUCT = "ваше объявление"
-FALLBACK_CATEGORY = "категория"
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -48,6 +44,7 @@ class OutreachService:
         session: AsyncSession,
         client: AvitoClient,
         settings: Settings,
+        ai: AIClient,
         rng: Random | None = None,
     ) -> None:
         self.session = session
@@ -55,6 +52,7 @@ class OutreachService:
         self.settings = settings
         self.timezone = ZoneInfo(settings.timezone)
         self.rng = rng or Random()
+        self.variations = VariationService(session, ai, settings)
 
     async def send(self, request: OutreachRequest) -> OutreachResult:
         payload = OutreachRequest.model_validate(request)
@@ -98,12 +96,8 @@ class OutreachService:
                 reason=f"no active script for stage {payload.stage}",
             )
 
-        text = render_template(
-            script.template_text,
-            name=seller.name,
-            product=await self._product_for(seller),
-            category=await self._category_name(seller),
-        )
+        variation = await self.variations.compose(seller, payload.stage, script)
+        text = variation.final_text
 
         try:
             result = await self.client.send_message(
@@ -237,16 +231,6 @@ class OutreachService:
             )
         )
         return self.rng.choice(variants) if variants else None
-
-    async def _product_for(self, seller: Seller) -> str:
-        listing = await self.session.scalar(
-            select(Listing).where(Listing.seller_id == seller.id).order_by(Listing.id).limit(1)
-        )
-        return listing.title if listing else FALLBACK_PRODUCT
-
-    async def _category_name(self, seller: Seller) -> str:
-        category = await self.session.get(Category, seller.category_id)
-        return category.name if category else FALLBACK_CATEGORY
 
     def _account_ref(self, account: Account) -> AvitoAccountRef:
         return AvitoAccountRef(

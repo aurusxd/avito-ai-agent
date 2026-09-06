@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.ai import get_ai_client
+from app.clients.ai.base import AIClient
 from app.clients.avito import get_avito_client
 from app.clients.avito.base import AvitoClient
 from app.config import Settings, get_settings
@@ -19,11 +21,14 @@ router = APIRouter(
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 ClientDep = Annotated[AvitoClient, Depends(get_avito_client)]
+AIClientDep = Annotated[AIClient, Depends(get_ai_client)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-def get_service(session: SessionDep, client: ClientDep, settings: SettingsDep) -> OutreachService:
-    return OutreachService(session, client, settings)
+def get_service(
+    session: SessionDep, client: ClientDep, settings: SettingsDep, ai: AIClientDep
+) -> OutreachService:
+    return OutreachService(session, client, settings, ai)
 
 
 ServiceDep = Annotated[OutreachService, Depends(get_service)]

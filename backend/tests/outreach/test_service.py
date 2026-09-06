@@ -6,6 +6,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.ai.base import AIClient
+from app.clients.ai.fake import FakeAIClient
 from app.clients.avito.base import AvitoBlockedError
 from app.clients.avito.fake import FakeAvitoClient
 from app.config import get_settings
@@ -76,8 +78,12 @@ async def build_world(session: AsyncSession, *, accounts: int = 1) -> World:
     return World(category=category, seller=seller, accounts=created)
 
 
-def make_service(session: AsyncSession, client: FakeAvitoClient) -> OutreachService:
-    return OutreachService(session, client, get_settings(), rng=Random(7))
+def make_service(
+    session: AsyncSession,
+    client: FakeAvitoClient,
+    ai: AIClient | None = None,
+) -> OutreachService:
+    return OutreachService(session, client, get_settings(), ai or FakeAIClient(), rng=Random(7))
 
 
 async def count_logs(session: AsyncSession) -> int:
