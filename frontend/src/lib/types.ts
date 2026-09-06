@@ -19,6 +19,50 @@ export type CategoryCreate = Omit<Category, 'id'>;
 
 export type CategoryUpdate = Partial<CategoryCreate>;
 
+
+export type AccountStatus = 'active' | 'paused' | 'banned';
+
+export type Account = {
+	id: number;
+	login: string;
+	session_storage_path: string;
+	status: AccountStatus;
+	daily_limit: number;
+	daily_message_count: number;
+	remaining_today: number;
+	has_session: boolean;
+	last_reset_at: string;
+	created_at: string;
+};
+
+export type AccountCreate = {
+	login: string;
+	session_storage_path: string;
+	daily_limit: number;
+};
+
+export type AccountUpdate = Partial<AccountCreate> & { status?: AccountStatus };
+
+export type RotationMember = {
+	account_id: number;
+	login: string;
+	status: AccountStatus;
+	remaining_today: number;
+	in_rotation: boolean;
+	available: boolean;
+};
+
+export type RotationPreview = {
+	rotation_size: number;
+	delay_min_minutes: number;
+	delay_max_minutes: number;
+	daily_limit: number;
+	next_account_id: number | null;
+	capacity_today: number;
+	members: RotationMember[];
+};
+
+
 export type ApiErrorBody = {
 	error: {
 		code: string;
