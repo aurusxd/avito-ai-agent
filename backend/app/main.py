@@ -18,6 +18,7 @@ from app.outreach.router import router as outreach_router
 from app.parser.router import router as parser_router
 from app.scheduler import is_running, shutdown_scheduler, start_scheduler
 from app.scripts_admin.router import router as scripts_router
+from app.settings_admin.router import router as settings_router
 
 
 async def _database_ready() -> bool:
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(outreach_router, prefix="/api")
     app.include_router(parser_router, prefix="/api")
     app.include_router(scripts_router, prefix="/api")
+    app.include_router(settings_router, prefix="/api")
     return app
 
 

@@ -111,3 +111,18 @@ export type StageCoverage = {
 	free_slots: number;
 	ready: boolean;
 };
+
+export type BotSettings = {
+	window_start: number;
+	window_end: number;
+	weekdays_enabled: number[];
+	paused: boolean;
+	delay_min_minutes: number;
+	delay_max_minutes: number;
+	account_rotation_size: number;
+	daily_limit: number;
+	timezone: string;
+	window_open_now: boolean;
+	next_window_at: string | null;
+	closed_reason: string | null;
+};

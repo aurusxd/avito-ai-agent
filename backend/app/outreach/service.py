@@ -29,8 +29,10 @@ from app.domain.rotation import (
     resume_if_cooled,
     select_account,
 )
+from app.domain.scheduling import closed_reason
 from app.domain.schemas import MessageLogRead, OutreachRequest, OutreachResult, SellerDTO
 from app.errors import NotFoundError
+from app.settings_admin.service import BotSettingsService
 
 
 class OutreachService:
@@ -69,6 +71,16 @@ class OutreachService:
         seller = await self.session.get(Seller, payload.seller_id)
         if seller is None:
             raise NotFoundError(f"seller {payload.seller_id} not found")
+
+        window = await BotSettingsService(self.session, self.settings).window()
+        closed = closed_reason(window, now, self.timezone)
+        if closed is not None:
+            return OutreachResult(
+                seller_id=payload.seller_id,
+                stage=payload.stage,
+                status="skipped",
+                reason=closed,
+            )
 
         account = await self._pick_account(payload.account_id, now)
         if account is None:

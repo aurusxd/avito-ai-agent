@@ -309,3 +309,36 @@ class StageCoverage(BaseModel):
     active_variants: int = 0
     free_slots: int = 0
     ready: bool = False
+
+
+class ScheduleSettingsUpdate(BaseModel):
+    window_start: int | None = Field(default=None, ge=0, le=23)
+    window_end: int | None = Field(default=None, ge=1, le=24)
+    weekdays_enabled: list[int] | None = None
+    paused: bool | None = None
+
+
+class LimitSettingsUpdate(BaseModel):
+    delay_min_minutes: int | None = Field(default=None, ge=1)
+    delay_max_minutes: int | None = Field(default=None, ge=1)
+    account_rotation_size: int | None = Field(default=None, ge=1)
+
+
+class BotSettingsUpdate(BaseModel):
+    schedule: ScheduleSettingsUpdate | None = None
+    limits: LimitSettingsUpdate | None = None
+
+
+class BotSettingsRead(BaseModel):
+    window_start: int
+    window_end: int
+    weekdays_enabled: list[int] = Field(default_factory=list)
+    paused: bool = False
+    delay_min_minutes: int
+    delay_max_minutes: int
+    account_rotation_size: int
+    daily_limit: int
+    timezone: str
+    window_open_now: bool = False
+    next_window_at: datetime | None = None
+    closed_reason: str | None = None

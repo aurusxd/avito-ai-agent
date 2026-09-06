@@ -11,7 +11,16 @@ from app.clients.ai.fake import FakeAIClient
 from app.clients.avito.base import AvitoBlockedError
 from app.clients.avito.fake import FakeAvitoClient
 from app.config import get_settings
-from app.db.models import Account, AccountStatus, Category, Listing, MessageLog, Script, Seller
+from app.db.models import (
+    Account,
+    AccountStatus,
+    Category,
+    Listing,
+    MessageLog,
+    ScheduleSettings,
+    Script,
+    Seller,
+)
 from app.db.models import SellerStatus as SellerStatusEnum
 from app.domain.schemas import OutreachRequest
 from app.errors import NotFoundError
@@ -59,6 +68,14 @@ async def build_world(session: AsyncSession, *, accounts: int = 1) -> World:
         )
     )
     session.add(Script(stage=1, variant_index=1, template_text=TEMPLATE, active=True))
+    session.add(
+        ScheduleSettings(
+            window_start=0,
+            window_end=24,
+            weekdays_enabled=[0, 1, 2, 3, 4, 5, 6],
+            paused=False,
+        )
+    )
 
     created: list[Account] = []
     for index in range(1, accounts + 1):
@@ -293,3 +310,37 @@ async def test_missing_script_skips(session: AsyncSession) -> None:
     assert result.status == "skipped"
     assert client.sent == []
     assert await count_logs(session) == 0
+
+
+async def test_send_is_skipped_while_the_bot_is_paused(session: AsyncSession) -> None:
+    world = await build_world(session)
+    schedule = await session.scalar(select(ScheduleSettings))
+    assert schedule is not None
+    schedule.paused = True
+    await session.commit()
+
+    client = FakeAvitoClient()
+    result = await make_service(session, client).send(
+        OutreachRequest(seller_id=world.seller.id, stage=1)
+    )
+
+    assert result.status == "skipped"
+    assert "paused" in (result.reason or "")
+    assert client.sent == []
+    assert await count_logs(session) == 0
+
+
+async def test_send_is_skipped_outside_the_window(session: AsyncSession) -> None:
+    world = await build_world(session)
+    schedule = await session.scalar(select(ScheduleSettings))
+    assert schedule is not None
+    schedule.weekdays_enabled = []
+    await session.commit()
+
+    client = FakeAvitoClient()
+    result = await make_service(session, client).send(
+        OutreachRequest(seller_id=world.seller.id, stage=1)
+    )
+
+    assert result.status == "skipped"
+    assert client.sent == []
