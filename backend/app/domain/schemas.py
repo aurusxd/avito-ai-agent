@@ -277,3 +277,35 @@ class LeadsRunResult(BaseModel):
     skipped: int = 0
     failed: int = 0
     results: list[LeadDeliveryResult] = Field(default_factory=list)
+
+
+class ScriptBase(BaseModel):
+    stage: Stage
+    variant_index: int = Field(ge=1, le=5)
+    template_text: str = Field(min_length=1)
+    active: bool = True
+
+
+class ScriptCreate(ScriptBase):
+    pass
+
+
+class ScriptUpdate(BaseModel):
+    stage: Stage | None = None
+    variant_index: int | None = Field(default=None, ge=1, le=5)
+    template_text: str | None = Field(default=None, min_length=1)
+    active: bool | None = None
+
+
+class ScriptRead(ScriptBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+
+
+class StageCoverage(BaseModel):
+    stage: Stage
+    variants: int = 0
+    active_variants: int = 0
+    free_slots: int = 0
+    ready: bool = False

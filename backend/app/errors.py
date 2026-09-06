@@ -23,6 +23,11 @@ class ConflictError(AppError):
     code = "conflict"
 
 
+class ValidationFailedError(AppError):
+    status_code = 422
+    code = "validation_error"
+
+
 class UnauthorizedError(AppError):
     status_code = 401
     code = "unauthorized"

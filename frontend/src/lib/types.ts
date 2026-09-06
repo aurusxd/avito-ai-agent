@@ -91,3 +91,23 @@ export type ParserRunResult = {
 	listings_created: number;
 	listings_updated: number;
 };
+
+export type Script = {
+	id: number;
+	stage: Stage;
+	variant_index: number;
+	template_text: string;
+	active: boolean;
+};
+
+export type ScriptCreate = Omit<Script, 'id'>;
+
+export type ScriptUpdate = Partial<ScriptCreate>;
+
+export type StageCoverage = {
+	stage: Stage;
+	variants: number;
+	active_variants: number;
+	free_slots: number;
+	ready: boolean;
+};
