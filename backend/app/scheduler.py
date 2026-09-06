@@ -5,12 +5,31 @@ from loguru import logger
 from app.config import get_settings
 
 DEMO_JOB_ID = "demo-heartbeat"
+LEADS_JOB_ID = "leads-delivery"
 
 _scheduler: AsyncIOScheduler | None = None
 
 
 async def demo_heartbeat() -> None:
     logger.info("scheduler heartbeat")
+
+
+async def deliver_leads() -> None:
+    from app.clients.telegram import get_notifier
+    from app.db.base import session_factory
+    from app.leads.service import LeadService
+
+    settings = get_settings()
+    async with session_factory() as session:
+        run = await LeadService(session, get_notifier(), settings).deliver_pending()
+
+    if run.delivered or run.failed:
+        logger.info(
+            "leads job: {delivered} delivered, {failed} failed, {candidates} candidate(s)",
+            delivered=run.delivered,
+            failed=run.failed,
+            candidates=run.candidates,
+        )
 
 
 def get_scheduler() -> AsyncIOScheduler:
@@ -31,6 +50,15 @@ def start_scheduler() -> AsyncIOScheduler:
         trigger="interval",
         minutes=5,
         id=DEMO_JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        deliver_leads,
+        trigger="interval",
+        seconds=get_settings().leads_poll_seconds,
+        id=LEADS_JOB_ID,
         replace_existing=True,
         max_instances=1,
         coalesce=True,

@@ -12,6 +12,7 @@ from app.categories.router import router as categories_router
 from app.config import get_settings
 from app.db.base import engine
 from app.errors import register_error_handlers
+from app.leads.router import router as leads_router
 from app.logging import setup_logging
 from app.outreach.router import router as outreach_router
 from app.parser.router import router as parser_router
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(accounts_router, prefix="/api")
     app.include_router(ai_router, prefix="/api")
     app.include_router(categories_router, prefix="/api")
+    app.include_router(leads_router, prefix="/api")
     app.include_router(outreach_router, prefix="/api")
     app.include_router(parser_router, prefix="/api")
     return app

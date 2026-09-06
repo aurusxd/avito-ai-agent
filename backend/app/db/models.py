@@ -190,6 +190,7 @@ class Reply(Base):
 
 class Lead(Base):
     __tablename__ = "leads"
+    __table_args__ = (UniqueConstraint("reply_id", name="uq_leads_reply_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"))
