@@ -39,6 +39,14 @@ class AvitoBlockedError(RuntimeError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class IncomingReplyDTO(BaseModel):
+    external_id: str = Field(min_length=1, max_length=255)
+    avito_seller_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    received_at: datetime
+    chat_url: str | None = None
+
+
 class AvitoAccountRef(BaseModel):
     id: int = Field(ge=1)
     login: str = Field(min_length=1)
@@ -53,3 +61,7 @@ class AvitoClient(Protocol):
     async def send_message(
         self, account: AvitoAccountRef, seller: SellerDTO, text: str
     ) -> SendResult: ...
+
+    async def fetch_replies(
+        self, account: AvitoAccountRef, limit: int = 50
+    ) -> list[IncomingReplyDTO]: ...

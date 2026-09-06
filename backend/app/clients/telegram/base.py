@@ -5,6 +5,12 @@ from pydantic import BaseModel, Field
 from app.domain.schemas import MessageDTO, Stage
 
 
+class NotifierUnavailableError(RuntimeError):
+    def __init__(self, message: str, provider: str) -> None:
+        super().__init__(message)
+        self.provider = provider
+
+
 class LeadNotification(BaseModel):
     seller_name: str = Field(min_length=1)
     listing_url: str = Field(min_length=1)

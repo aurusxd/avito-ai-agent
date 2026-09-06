@@ -3,10 +3,11 @@ from datetime import UTC, datetime
 from app.clients.avito.base import (
     AvitoAccountRef,
     AvitoBlockedError,
+    IncomingReplyDTO,
     ParserResult,
     SendResult,
 )
-from app.db.seed import SEED_PARSER_RESULTS
+from app.db.seed import SEED_INCOMING_REPLIES, SEED_PARSER_RESULTS
 from app.domain.schemas import CategoryDTO, SellerDTO
 
 
@@ -14,6 +15,7 @@ class FakeAvitoClient:
     def __init__(
         self,
         results: list[ParserResult] | None = None,
+        replies: list[IncomingReplyDTO] | None = None,
         failure: Exception | None = None,
         fail_times: int = 0,
         block: AvitoBlockedError | None = None,
@@ -24,7 +26,11 @@ class FakeAvitoClient:
         self.fail_times = fail_times
         self.block = block
         self.block_times = block_times
+        self.replies: list[IncomingReplyDTO] = list(
+            replies if replies is not None else SEED_INCOMING_REPLIES
+        )
         self.parsed_categories: list[CategoryDTO] = []
+        self.fetched_for: list[int] = []
         self.sent: list[tuple[int, str, str]] = []
 
     def _maybe_fail(self) -> None:
@@ -61,3 +67,12 @@ class FakeAvitoClient:
             return SendResult(status="failed", sent_at=datetime.now(UTC), error=str(error))
         self.sent.append((validated_account.id, validated_seller.avito_seller_id, text))
         return SendResult(status="sent", sent_at=datetime.now(UTC))
+
+    async def fetch_replies(
+        self, account: AvitoAccountRef, limit: int = 50
+    ) -> list[IncomingReplyDTO]:
+        validated = AvitoAccountRef.model_validate(account)
+        self.fetched_for.append(validated.id)
+        self._maybe_block()
+        self._maybe_fail()
+        return [IncomingReplyDTO.model_validate(reply) for reply in self.replies[:limit]]

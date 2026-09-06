@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients.avito.base import ParserResult
+from app.clients.avito.base import IncomingReplyDTO, ParserResult
 from app.db.base import Base, engine, session_factory
 from app.db.models import (
     Account,
@@ -185,6 +185,24 @@ SEED_PARSER_RESULTS: list[ParserResult] = [
                 price=None,
             ),
         ],
+    ),
+]
+
+
+SEED_INCOMING_REPLIES: list[IncomingReplyDTO] = [
+    IncomingReplyDTO(
+        external_id="seed-msg-1",
+        avito_seller_id="seed-seller-1",
+        text="Да, интересно, расскажите подробнее",
+        received_at=datetime(2026, 9, 6, 9, 30, tzinfo=UTC),
+        chat_url="https://www.avito.ru/profile/messenger/channel/seed-1",
+    ),
+    IncomingReplyDTO(
+        external_id="seed-msg-2",
+        avito_seller_id="seed-seller-2",
+        text="Нет, не пишите мне больше",
+        received_at=datetime(2026, 9, 6, 10, 15, tzinfo=UTC),
+        chat_url="https://www.avito.ru/profile/messenger/channel/seed-2",
     ),
 ]
 

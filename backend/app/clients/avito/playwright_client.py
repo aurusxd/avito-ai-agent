@@ -20,6 +20,7 @@ from playwright.async_api import (
 from app.clients.avito.base import (
     AvitoAccountRef,
     AvitoBlockedError,
+    IncomingReplyDTO,
     ParserResult,
     SendResult,
 )
@@ -442,3 +443,11 @@ class PlaywrightAvitoClient:
         low = self.settings.parser_delay_min_seconds
         high = max(low, self.settings.parser_delay_max_seconds)
         await asyncio.sleep(random.uniform(low, high))
+
+    async def fetch_replies(
+        self, account: AvitoAccountRef, limit: int = 50
+    ) -> list[IncomingReplyDTO]:
+        raise NotImplementedError(
+            "avito messenger selectors are not captured yet, see tech.md 20.1; "
+            "run the reader against FakeAvitoClient until a live session is available"
+        )
