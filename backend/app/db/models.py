@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -172,15 +173,18 @@ class MessageLog(Base):
 
 class Reply(Base):
     __tablename__ = "replies"
+    __table_args__ = (UniqueConstraint("external_id", name="uq_replies_external_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"))
     message_log_id: Mapped[int] = mapped_column(ForeignKey("message_log.id", ondelete="CASCADE"))
     reply_text: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ai_sentiment: Mapped[Sentiment | None] = mapped_column(
         _enum_column(Sentiment, "ai_sentiment"), nullable=True
     )
+    ai_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
