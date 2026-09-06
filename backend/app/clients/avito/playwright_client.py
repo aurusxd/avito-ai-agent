@@ -306,6 +306,11 @@ class PlaywrightAvitoClient:
         high = max(low, self.settings.outreach_type_delay_max_ms)
         composer = page.locator(ICEBREAKER_TEXTAREA)
         await composer.click()
+
+        if await composer.input_value():
+            await composer.press("Control+a")
+            await composer.press("Delete")
+
         await composer.press_sequentially(text, delay=random.uniform(low, high))
         await page.wait_for_timeout(random.randint(400, 1_200))
 
