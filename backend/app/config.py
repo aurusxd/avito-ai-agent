@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     ai_max_variation_length: int = Field(default=500, ge=32)
     ai_sentiment_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
+    telegram_client: Literal["fake", "aiogram"] = "fake"
+    telegram_timeout_seconds: float = Field(default=15.0, ge=1.0)
+    leads_poll_seconds: int = Field(default=60, ge=10, le=600)
+    leads_history_limit: int = Field(default=20, ge=1, le=200)
+
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:4173"]
     panel_api_token: str = "dev-panel-token"
 

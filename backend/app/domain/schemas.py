@@ -233,3 +233,47 @@ class ReplyAnalysisResult(BaseModel):
     provider: str | None = None
     reason: str | None = None
     already_analyzed: bool = False
+
+
+class InboxPollRequest(BaseModel):
+    account_id: int | None = Field(default=None, ge=1)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class InboxPollResult(BaseModel):
+    account_id: int | None = None
+    fetched: int = 0
+    ingested: int = 0
+    duplicates: int = 0
+    unknown_sellers: int = 0
+    without_message_log: int = 0
+    analyzed: int = 0
+    block_kind: BlockKindLiteral = "none"
+    reason: str | None = None
+
+
+class LeadRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    seller_id: int
+    reply_id: int
+    sent_to_telegram_at: datetime | None = None
+    conversation_history: list[MessageDTO] = Field(default_factory=list)
+
+
+class LeadDeliveryResult(BaseModel):
+    seller_id: int
+    reply_id: int
+    lead_id: int | None = None
+    delivered: bool = False
+    already_delivered: bool = False
+    reason: str | None = None
+
+
+class LeadsRunResult(BaseModel):
+    candidates: int = 0
+    delivered: int = 0
+    skipped: int = 0
+    failed: int = 0
+    results: list[LeadDeliveryResult] = Field(default_factory=list)
