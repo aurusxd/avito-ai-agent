@@ -12,6 +12,7 @@ from app.domain.rotation import (
     MIN_DELAY_MINUTES,
     MIN_ROTATION_SIZE,
     AccountState,
+    AccountStatusLiteral,
     RotationSettings,
     apply_daily_reset,
     clamp_daily_limit,
@@ -29,7 +30,7 @@ from app.domain.rotation import (
 MSK = ZoneInfo("Europe/Moscow")
 NOW = datetime(2026, 9, 6, 12, 0, tzinfo=UTC)
 
-statuses = st.sampled_from(["active", "paused", "banned"])
+statuses: st.SearchStrategy[AccountStatusLiteral] = st.sampled_from(["active", "paused", "banned"])
 aware_datetimes = st.datetimes(
     min_value=datetime(2024, 1, 1),
     max_value=datetime(2030, 1, 1),
