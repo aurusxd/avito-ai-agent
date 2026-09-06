@@ -248,6 +248,17 @@
 					<p class="text-muted-foreground text-sm">Идёт вход, это занимает до минуты.</p>
 				{/if}
 
+				{#if session.has_screenshot && session.status !== 'captcha_required'}
+					<details class="text-sm">
+						<summary class="cursor-pointer">Что сейчас показывает Авито</summary>
+						<img
+							src={`/accounts/login/${session.session_id}/screenshot`}
+							alt="Экран браузера бота"
+							class="border-border mt-2 w-full rounded-md border"
+						/>
+					</details>
+				{/if}
+
 				<Dialog.Footer>
 					{#if session.status === 'failed' || session.status === 'expired'}
 						<Button variant="outline" onclick={reset}>Попробовать снова</Button>

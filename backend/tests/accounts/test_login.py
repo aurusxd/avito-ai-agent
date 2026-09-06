@@ -177,10 +177,25 @@ async def test_unknown_session_raises_not_found(session, settings) -> None:
         await make_service(session, FakeAvitoAuthClient(), settings).state("nope")
 
 
-async def test_session_without_a_screenshot_raises_not_found(session, settings) -> None:
+async def test_code_step_also_carries_a_screenshot(session, settings) -> None:
     service = make_service(session, FakeAvitoAuthClient(), settings)
+
     started = await service.start(request())
 
+    assert started.status == "code_required"
+    assert started.has_screenshot is True
+    assert service.screenshot(started.session_id) == b"fake-png"
+
+
+async def test_session_without_a_screenshot_raises_not_found(session, settings) -> None:
+    class Blind(FakeAvitoAuthClient):
+        async def screenshot(self) -> bytes | None:
+            return None
+
+    service = make_service(session, Blind(), settings)
+    started = await service.start(request())
+
+    assert started.has_screenshot is False
     with pytest.raises(NotFoundError):
         service.screenshot(started.session_id)
 

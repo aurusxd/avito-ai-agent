@@ -22,12 +22,37 @@ PASSWORD_INPUT = '[data-marker="login-form/password/input"]'
 SUBMIT_BUTTON = '[data-marker="login-form/submit"]'
 PROFILE_MENU = '[data-marker="header/menu-profile"]'
 
-CODE_INPUT_CANDIDATES = (
-    '[data-marker="login-form/code/input"]',
-    'input[autocomplete="one-time-code"]',
-    'input[inputmode="numeric"]',
-    'input[name="code"]',
-)
+CODE_MARKERS = ("код", "sms", "смс", "one-time", "подтверждени")
+
+PROBE_SCRIPT = """
+(selectors) => {
+  const popup = document.querySelector(selectors.popup) || document.body;
+  const known = [
+    ...document.querySelectorAll(selectors.login),
+    ...document.querySelectorAll(selectors.password),
+  ];
+  const visible = (el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const inputs = [...popup.querySelectorAll('input')]
+    .filter((el) => visible(el) && !known.includes(el) && el.type !== 'checkbox')
+    .map((el) => ({
+      marker: el.getAttribute('data-marker'),
+      name: el.getAttribute('name'),
+      type: el.getAttribute('type'),
+      inputmode: el.getAttribute('inputmode'),
+      autocomplete: el.getAttribute('autocomplete'),
+      maxlength: el.getAttribute('maxlength'),
+    }));
+  return {
+    text: (popup.innerText || '').trim().slice(0, 400),
+    inputs,
+    passwordVisible: [...document.querySelectorAll(selectors.password)].some(visible),
+    submitVisible: [...document.querySelectorAll(selectors.submit)].some(visible),
+  };
+}
+"""
 
 CAPTCHA_MARKERS = ("подтвердите, что вы не робот", "captcha", "я не робот")
 CREDENTIAL_ERROR_MARKERS = (
@@ -37,6 +62,12 @@ CREDENTIAL_ERROR_MARKERS = (
     "неверный пароль",
 )
 BLOCKED_MARKERS = ("доступ ограничен", "слишком много попыток", "временно заблокирован")
+
+
+def _short(value: str, limit: int = 160) -> str:
+    collapsed = " ".join(value.split())
+    return collapsed[:limit] if collapsed else "empty popup"
+
 
 OPEN_LOGIN_SCRIPT = """
 (selector) => {
@@ -171,17 +202,65 @@ class PlaywrightAvitoAuthClient:
             ),
         )
 
-    async def _code_field(self, page: Page) -> Any:
-        for selector in CODE_INPUT_CANDIDATES:
-            field = await page.query_selector(selector)
-            if field is not None and await field.is_visible():
-                logger.debug("code field matched {selector}", selector=selector)
-                return field
+    async def _probe(self, page: Page) -> dict[str, Any]:
+        return cast(
+            dict[str, Any],
+            await page.evaluate(
+                PROBE_SCRIPT,
+                {
+                    "popup": AUTH_POPUP,
+                    "login": LOGIN_INPUT,
+                    "password": PASSWORD_INPUT,
+                    "submit": SUBMIT_BUTTON,
+                },
+            ),
+        )
+
+    def _code_selector(self, probe: dict[str, Any]) -> str | None:
+        text = str(probe.get("text", "")).lower()
+        mentions_code = any(marker in text for marker in CODE_MARKERS)
+
+        for field in probe.get("inputs", []):
+            marker = field.get("marker") or ""
+            if "code" in marker:
+                return f'[data-marker="{marker}"]'
+            if field.get("autocomplete") == "one-time-code":
+                return 'input[autocomplete="one-time-code"]'
+            if field.get("name") == "code":
+                return 'input[name="code"]'
+
+        if not mentions_code:
+            return None
+
+        for field in probe.get("inputs", []):
+            if field.get("name"):
+                return f'input[name="{field["name"]}"]'
+            if field.get("marker"):
+                return f'[data-marker="{field["marker"]}"]'
         return None
+
+    async def _code_field(self, page: Page) -> Any:
+        selector = self._code_selector(await self._probe(page))
+        if selector is None:
+            return None
+        field = await page.query_selector(selector)
+        if field is None or not await field.is_visible():
+            return None
+        logger.debug("code field matched {selector}", selector=selector)
+        return field
 
     async def _classify(self, failure_hint: str) -> LoginStep:
         page = self._require_page()
         text = (await page.content()).lower()
+        probe = await self._probe(page)
+        popup_text = str(probe.get("text", ""))
+
+        logger.debug(
+            "login probe: submit={submit} password={password} inputs={inputs}",
+            submit=probe.get("submitVisible"),
+            password=probe.get("passwordVisible"),
+            inputs=probe.get("inputs"),
+        )
 
         if any(marker in text for marker in CAPTCHA_MARKERS):
             return LoginStep(
@@ -192,16 +271,28 @@ class PlaywrightAvitoAuthClient:
         if await page.query_selector(PROFILE_MENU) is not None:
             return LoginStep(status="saving", hint=None)
 
-        if await self._code_field(page) is not None:
-            return LoginStep(status="code_required", hint="enter the code avito sent by sms")
-
-        if any(marker in text for marker in CREDENTIAL_ERROR_MARKERS):
+        lowered_popup = popup_text.lower()
+        if any(marker in lowered_popup for marker in CREDENTIAL_ERROR_MARKERS) or any(
+            marker in text for marker in CREDENTIAL_ERROR_MARKERS
+        ):
             return LoginStep(status="failed", hint="avito rejected the login or password")
 
         if any(marker in text for marker in BLOCKED_MARKERS):
             return LoginStep(status="failed", hint="avito blocked this sign in attempt")
 
+        if probe.get("passwordVisible") or probe.get("submitVisible"):
+            return LoginStep(
+                status="failed",
+                hint=f"still on the login form, avito shows: {_short(popup_text)}",
+            )
+
+        if self._code_selector(probe) is not None:
+            return LoginStep(status="code_required", hint="enter the code avito sent by sms")
+
         if await page.query_selector(LOGIN_BUTTON) is None:
             return LoginStep(status="saving", hint=None)
 
-        return LoginStep(status="failed", hint=failure_hint)
+        return LoginStep(
+            status="failed",
+            hint=f"{failure_hint}: {_short(popup_text)}" if popup_text else failure_hint,
+        )

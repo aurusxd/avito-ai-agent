@@ -88,6 +88,7 @@ class LoginService:
                 login=payload.login,
                 kind=type(error).__name__,
             )
+            run.screenshot = await self._safe_screenshot(run)
             await self._finish(run, "failed", f"login crashed: {type(error).__name__}")
             return self._read(run)
 
@@ -134,12 +135,8 @@ class LoginService:
         hint = step.hint
         now = datetime.now(UTC)
 
-        if status == "captcha_required":
-            run.screenshot = await run.client.screenshot()
-            run.session = advance(
-                run.session, "captcha_required", now, hint=hint, has_screenshot=bool(run.screenshot)
-            )
-            return
+        if status != "saving":
+            run.screenshot = await self._safe_screenshot(run)
 
         if status == "saving":
             await self._persist(run, now)
@@ -149,7 +146,9 @@ class LoginService:
             await self._finish(run, "failed", hint)
             return
 
-        run.session = advance(run.session, status, now, hint=hint)
+        run.session = advance(
+            run.session, status, now, hint=hint, has_screenshot=bool(run.screenshot)
+        )
 
     async def _persist(self, run: LoginRun, now: datetime) -> None:
         run.session = advance(run.session, "saving", now)
@@ -187,8 +186,21 @@ class LoginService:
         await self._release(run)
 
     async def _finish(self, run: LoginRun, status: LoginStatusLiteral, hint: str | None) -> None:
-        run.session = advance(run.session, status, datetime.now(UTC), hint=hint)
+        run.session = advance(
+            run.session,
+            status,
+            datetime.now(UTC),
+            hint=hint,
+            has_screenshot=bool(run.screenshot),
+        )
         await self._release(run)
+
+    async def _safe_screenshot(self, run: LoginRun) -> bytes | None:
+        try:
+            return await run.client.screenshot()
+        except Exception:
+            logger.debug("could not take a login screenshot")
+            return None
 
     async def _release(self, run: LoginRun) -> None:
         try:
