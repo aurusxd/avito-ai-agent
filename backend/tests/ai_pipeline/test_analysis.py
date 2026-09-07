@@ -52,6 +52,10 @@ class ScriptedAnalysisAI:
         return AIAnalysisResponse(sentiment=self.sentiment, confidence=self.confidence)  # type: ignore[arg-type]
 
 
+# anchored so a bot message always precedes the replies the other suites add at NOW
+SENT_AT = datetime(2026, 9, 6, 11, 0, tzinfo=UTC)
+
+
 class World(NamedTuple):
     seller: Seller
     other_seller: Seller
@@ -95,7 +99,7 @@ async def build_world(session: AsyncSession) -> World:
             stage=1,
             variant_used=1,
             final_text="Здравствуйте!",
-            sent_at=datetime.now(UTC),
+            sent_at=SENT_AT,
             status=MessageStatus.SENT,
         )
         session.add(log)

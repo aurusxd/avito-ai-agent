@@ -24,6 +24,7 @@ from app.clients.avito.base import (
     ParserResult,
     SendResult,
 )
+from app.clients.avito.browser import launch_args
 from app.config import Settings, get_settings
 from app.domain.proxy import ProxyCredentials, proxy_settings
 from app.domain.rotation import BlockKindLiteral
@@ -218,7 +219,7 @@ class PlaywrightAvitoClient:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
                 headless=self.settings.avito_headless,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=launch_args(self.settings),
                 proxy=proxy,
             )
             try:
@@ -242,7 +243,7 @@ class PlaywrightAvitoClient:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
                 headless=self.settings.avito_headless,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=launch_args(self.settings),
                 proxy=cast("ProxySettings | None", proxy),
             )
             try:

@@ -8,8 +8,12 @@ services:
       DATABASE_URL: sqlite+aiosqlite:////app/data/avito.db
       PANEL_API_TOKEN: ${PANEL_API_TOKEN:-dev-panel-token}
       CORS_ORIGINS: '["http://localhost:3000"]'
+      AVITO_HEADLESS: ${AVITO_HEADLESS:-false}
+      BROWSER_NO_SANDBOX: ${BROWSER_NO_SANDBOX:-true}
+      BROWSER_DISABLE_DEV_SHM: ${BROWSER_DISABLE_DEV_SHM:-false}
     volumes:
       - sqlite-data:/app/data
+    shm_size: 1gb
     ports:
       - "${BACKEND_PORT:-8080}:8000"
     healthcheck:

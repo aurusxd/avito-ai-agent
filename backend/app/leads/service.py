@@ -147,7 +147,8 @@ class LeadService:
             for reply in replies
         ]
 
-        history.sort(key=lambda item: item.sent_at)
+        # a reply always answers the message before it, so a tie keeps the bot first
+        history.sort(key=lambda item: (item.sent_at, 0 if item.role == "bot" else 1))
         return history[-self.settings.leads_history_limit :]
 
     async def _listing_url(self, seller: Seller) -> str:

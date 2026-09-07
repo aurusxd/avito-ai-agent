@@ -12,6 +12,7 @@ from playwright.async_api import (
 )
 
 from app.clients.avito.base import LoginStep
+from app.clients.avito.browser import explain_launch_failure, launch_args
 from app.config import Settings, get_settings
 from app.domain.proxy import mask_proxy_url, proxy_settings
 
@@ -26,6 +27,16 @@ CODE_MARKERS = ("код", "sms", "смс", "one-time", "подтверждени
 
 PROBE_SCRIPT = """
 (selectors) => {
+  const empty = {
+    text: '',
+    bodyText: '',
+    ready: document.readyState,
+    inputs: [],
+    captchaWidgets: 0,
+    passwordVisible: false,
+    submitVisible: false,
+  };
+  if (!document.body) return empty;
   const popup = document.querySelector(selectors.popup) || document.body;
   const known = [
     ...document.querySelectorAll(selectors.login),
@@ -45,16 +56,26 @@ PROBE_SCRIPT = """
       autocomplete: el.getAttribute('autocomplete'),
       maxlength: el.getAttribute('maxlength'),
     }));
+  const captchaFrames = [...document.querySelectorAll('iframe')]
+    .filter((el) => (el.getAttribute('src') || '').toLowerCase().includes('captcha'))
+    .length;
+  const captchaNodes = [...document.querySelectorAll('[data-marker]')]
+    .filter((el) => (el.getAttribute('data-marker') || '').toLowerCase().includes('captcha'))
+    .filter(visible)
+    .length;
   return {
     text: (popup.innerText || '').trim().slice(0, 400),
+    bodyText: (document.body ? document.body.innerText || '' : '').trim().slice(0, 2000),
+    ready: document.readyState,
     inputs,
+    captchaWidgets: captchaFrames + captchaNodes,
     passwordVisible: [...document.querySelectorAll(selectors.password)].some(visible),
     submitVisible: [...document.querySelectorAll(selectors.submit)].some(visible),
   };
 }
 """
 
-CAPTCHA_MARKERS = ("подтвердите, что вы не робот", "captcha", "я не робот")
+CAPTCHA_TEXT_MARKERS = ("подтвердите, что вы не робот", "я не робот", "докажите, что вы не робот")
 CREDENTIAL_ERROR_MARKERS = (
     "неверный логин или пароль",
     "неправильный логин или пароль",
@@ -121,7 +142,7 @@ class PlaywrightAvitoAuthClient:
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=self.settings.avito_headless,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=launch_args(self.settings),
                 proxy=cast("ProxySettings | None", proxy),
             )
             self._context = await self._browser.new_context(
@@ -131,10 +152,15 @@ class PlaywrightAvitoAuthClient:
             )
             self._page = await self._context.new_page()
         except Exception as error:
-            logger.warning("browser did not start: {reason}", reason=describe(error))
-            return LoginStep(
-                status="failed", hint=f"browser did not start, {describe(error, password)}"
+            raw = f"{type(error).__name__}: {error}"
+            logger.warning("browser did not start: {reason}", reason=raw[:600])
+            explained = explain_launch_failure(raw)
+            hint = (
+                f"browser did not start: {explained}"
+                if explained
+                else f"browser did not start, {describe(error, password, limit=400)}"
             )
+            return LoginStep(status="failed", hint=hint)
 
         page = self._page
 
@@ -269,6 +295,19 @@ class PlaywrightAvitoAuthClient:
             ),
         )
 
+    async def _settled_probe(self, page: Page) -> dict[str, Any]:
+        probe: dict[str, Any] = {}
+        for _ in range(10):
+            try:
+                probe = await self._probe(page)
+            except Exception as error:
+                logger.debug("probe failed, page not ready: {reason}", reason=describe(error))
+                probe = {}
+            if probe.get("ready") == "complete" and str(probe.get("bodyText", "")).strip():
+                return probe
+            await page.wait_for_timeout(1_000)
+        return probe
+
     def _code_selector(self, probe: dict[str, Any]) -> str | None:
         text = str(probe.get("text", "")).lower()
         mentions_code = any(marker in text for marker in CODE_MARKERS)
@@ -304,18 +343,24 @@ class PlaywrightAvitoAuthClient:
 
     async def _classify(self, failure_hint: str) -> LoginStep:
         page = self._require_page()
-        text = (await page.content()).lower()
-        probe = await self._probe(page)
+        probe = await self._settled_probe(page)
         popup_text = str(probe.get("text", ""))
+        body_text = str(probe.get("bodyText", "")).lower()
+        text = body_text
 
         logger.debug(
-            "login probe: submit={submit} password={password} inputs={inputs}",
+            "login probe: ready={ready} submit={submit} password={password} inputs={inputs}",
+            ready=probe.get("ready"),
             submit=probe.get("submitVisible"),
             password=probe.get("passwordVisible"),
             inputs=probe.get("inputs"),
         )
 
-        if any(marker in text for marker in CAPTCHA_MARKERS):
+        # the marker has to be visible to a human: avito ships bundles whose file
+        # names contain "captcha" on every page, so raw html always matches
+        if int(probe.get("captchaWidgets") or 0) > 0 or any(
+            marker in body_text for marker in CAPTCHA_TEXT_MARKERS
+        ):
             return LoginStep(
                 status="captcha_required",
                 hint="avito asks for a captcha, a human has to finish this step",

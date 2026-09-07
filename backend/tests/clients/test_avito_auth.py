@@ -1,6 +1,8 @@
 from typing import Any
 
+from app.clients.avito.browser import explain_launch_failure, launch_args
 from app.clients.avito.playwright_auth import (
+    CAPTCHA_TEXT_MARKERS,
     PlaywrightAvitoAuthClient,
     _short,
     describe,
@@ -108,3 +110,87 @@ def test_describe_collapses_whitespace_and_truncates() -> None:
 
 def test_scrub_leaves_the_message_alone_without_a_secret() -> None:
     assert scrub("plain message", "") == "plain message"
+
+
+def test_missing_display_is_explained() -> None:
+    raw = (
+        "TargetClosedError: BrowserType.launch: Target page, context or browser has been closed "
+        "Browser logs: Looks like you launched a headed browser without having a XServer running."
+    )
+
+    explained = explain_launch_failure(raw)
+
+    assert explained is not None
+    assert "xvfb" in explained
+
+
+def test_missing_chromium_is_explained() -> None:
+    raw = "Error: Executable doesn't exist at /ms-playwright/chromium-1234/chrome-linux/chrome"
+
+    explained = explain_launch_failure(raw)
+
+    assert explained is not None
+    assert "playwright install chromium" in explained
+
+
+def test_root_sandbox_failure_is_explained() -> None:
+    raw = "Error: Running as root without --no-sandbox is not supported"
+
+    assert explain_launch_failure(raw) == (
+        "chromium cannot sandbox in this container, set BROWSER_NO_SANDBOX=true"
+    )
+
+
+def test_unknown_launch_failure_is_not_explained() -> None:
+    assert explain_launch_failure("Error: something entirely new") is None
+
+
+def test_container_flags_are_off_by_default() -> None:
+    assert launch_args(get_settings()) == ["--disable-blink-features=AutomationControlled"]
+
+
+def test_container_flags_are_added_when_enabled() -> None:
+    tuned = get_settings().model_copy(
+        update={"browser_no_sandbox": True, "browser_disable_dev_shm": True}
+    )
+
+    args = launch_args(tuned)
+
+    assert "--no-sandbox" in args
+    assert "--disable-setuid-sandbox" in args
+    assert "--disable-dev-shm-usage" in args
+
+
+def full_probe(**overrides: Any) -> dict[str, Any]:
+    state: dict[str, Any] = {
+        "text": "",
+        "bodyText": "",
+        "ready": "complete",
+        "inputs": [],
+        "captchaWidgets": 0,
+        "passwordVisible": False,
+        "submitVisible": False,
+    }
+    state.update(overrides)
+    return state
+
+
+def test_bundle_named_captcha_is_not_a_captcha() -> None:
+    # avito ships assets like captcha.chunk.js on every page; only what the
+    # human sees counts
+    state = full_probe(bodyText="Вход в Авито. Телефон или почта. Пароль.")
+
+    assert int(state["captchaWidgets"]) == 0
+    assert not any(marker in state["bodyText"].lower() for marker in CAPTCHA_TEXT_MARKERS)
+
+
+def test_visible_captcha_text_is_detected() -> None:
+    state = full_probe(bodyText="Подтвердите, что вы не робот")
+
+    assert any(marker in state["bodyText"].lower() for marker in CAPTCHA_TEXT_MARKERS)
+
+
+def test_captcha_widget_counts_even_without_text() -> None:
+    state = full_probe(captchaWidgets=1)
+
+    assert int(state["captchaWidgets"]) > 0
