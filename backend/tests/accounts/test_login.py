@@ -254,3 +254,47 @@ async def test_login_requires_panel_token(engine: AsyncEngine) -> None:
         response = await anonymous.post("/api/accounts/login", json={"login": "x", "password": "y"})
 
     assert response.status_code == 401
+
+
+def vnc_settings(base: Settings) -> Settings:
+    return base.model_copy(
+        update={"vnc_enabled": True, "vnc_public_url": "http://localhost:6080/vnc.html"}
+    )
+
+
+async def test_remote_view_is_offered_only_while_a_person_is_needed(session, settings) -> None:
+    service = make_service(session, FakeAvitoAuthClient(), vnc_settings(settings))
+
+    waiting = await service.start(request(login=CAPTCHA_LOGIN))
+    assert waiting.status == "captcha_required"
+    assert waiting.remote_view_url == "http://localhost:6080/vnc.html"
+
+
+async def test_remote_view_is_hidden_once_the_session_is_done(session, settings) -> None:
+    service = make_service(session, FakeAvitoAuthClient(), vnc_settings(settings))
+
+    started = await service.start(request())
+    assert started.remote_view_url is not None
+
+    done = await service.submit_code(started.session_id, VALID_CODE)
+
+    assert done.status == "done"
+    assert done.remote_view_url is None
+
+
+async def test_remote_view_stays_off_when_vnc_is_disabled(session, settings) -> None:
+    service = make_service(session, FakeAvitoAuthClient(), settings)
+
+    started = await service.start(request(login=CAPTCHA_LOGIN))
+
+    assert started.status == "captcha_required"
+    assert started.remote_view_url is None
+
+
+async def test_remote_view_needs_a_public_url(session, settings) -> None:
+    tuned = settings.model_copy(update={"vnc_enabled": True, "vnc_public_url": ""})
+    service = make_service(session, FakeAvitoAuthClient(), tuned)
+
+    started = await service.start(request(login=CAPTCHA_LOGIN))
+
+    assert started.remote_view_url is None

@@ -26,6 +26,27 @@ fi
 
 echo "Xvfb ready on ${DISPLAY} (pid ${XVFB_PID})"
 
+# noVNC lets an operator finish a captcha by hand in the very browser the bot
+# drives. It is off unless asked for, and never starts without a password: the
+# display holds a signed-in avito session.
+if [ "${VNC_ENABLED:-false}" = "true" ]; then
+    if [ -z "${VNC_PASSWORD:-}" ]; then
+        echo "VNC_ENABLED=true but VNC_PASSWORD is empty, refusing to expose the browser" >&2
+        exit 1
+    fi
+
+    mkdir -p /root/.vnc
+    x11vnc -storepasswd "${VNC_PASSWORD}" /root/.vnc/passwd >/dev/null 2>&1
+
+    x11vnc -display "${DISPLAY}" -rfbauth /root/.vnc/passwd -rfbport 5900 \
+        -localhost -forever -shared -noxdamage -quiet &
+    echo "x11vnc listening on 127.0.0.1:5900"
+
+    websockify --web=/usr/share/novnc "0.0.0.0:${VNC_WEB_PORT:-6080}" \
+        "localhost:5900" >/dev/null 2>&1 &
+    echo "noVNC ready on port ${VNC_WEB_PORT:-6080}"
+fi
+
 alembic upgrade head
 
 exec "$@"

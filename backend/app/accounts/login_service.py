@@ -17,6 +17,7 @@ from app.domain.auth_session import (
     LoginSession,
     LoginStatusLiteral,
     advance,
+    awaits_operator,
     can_submit_code,
     expire,
     expires_at,
@@ -230,6 +231,14 @@ class LoginService:
         if await self.session.scalar(select(Account.id).where(Account.login == login)) is not None:
             raise ConflictError(f"account with login {login!r} already exists")
 
+    def _remote_view_url(self, run: LoginRun) -> str | None:
+        # only handed out while a person is actually needed at the browser
+        if not self.settings.vnc_enabled or not self.settings.vnc_public_url:
+            return None
+        if not awaits_operator(run.session):
+            return None
+        return self.settings.vnc_public_url
+
     def _read(self, run: LoginRun) -> LoginSessionRead:
         return LoginSessionRead(
             session_id=run.session.session_id,
@@ -238,5 +247,6 @@ class LoginService:
             hint=run.session.hint,
             account_id=run.session.account_id,
             has_screenshot=run.session.has_screenshot,
+            remote_view_url=self._remote_view_url(run),
             expires_at=expires_at(run.session, self.settings.login_session_ttl_seconds),
         )

@@ -180,5 +180,6 @@ export type LoginSession = {
 	hint: string | null;
 	account_id: number | null;
 	has_screenshot: boolean;
+	remote_view_url: string | null;
 	expires_at: string;
 };

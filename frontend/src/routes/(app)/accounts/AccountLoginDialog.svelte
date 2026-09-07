@@ -115,6 +115,12 @@
 		}
 	}
 
+	async function refresh() {
+		if (!session) return;
+		const response = await fetch(`/accounts/login/${session.session_id}`);
+		if (response.ok) applySession(await response.json());
+	}
+
 	async function cancel() {
 		if (session && !TERMINAL.includes(session.status)) {
 			await fetch(`/accounts/login/${session.session_id}`, { method: 'DELETE' });
@@ -233,10 +239,27 @@
 				{:else if session.status === 'captcha_required'}
 					<div class="space-y-3">
 						<p class="text-sm">
-							Авито показал проверку. Автоматически она не проходится, нужен человек за
-							браузером на сервере.
+							{session.remote_view_url
+								? 'Авито показал проверку. Пройдите её сами в окне ниже: это тот самый браузер, в котором работает бот.'
+								: 'Авито показал проверку. Автоматически она не проходится, нужен человек за браузером на сервере.'}
 						</p>
-						{#if session.has_screenshot}
+
+						{#if session.remote_view_url}
+							<div class="border-border overflow-hidden rounded-md border">
+								<iframe
+									src={session.remote_view_url}
+									title="Браузер бота"
+									class="h-[28rem] w-full"
+								></iframe>
+							</div>
+							<p class="text-muted-foreground text-xs">
+								Окно просит пароль VNC. Не открывайте этот порт наружу: за ним браузер
+								с активной сессией Авито.
+							</p>
+							<Button variant="outline" size="sm" onclick={refresh}>
+								Я прошёл проверку, продолжить
+							</Button>
+						{:else if session.has_screenshot}
 							<img
 								src={`/accounts/login/${session.session_id}/screenshot`}
 								alt="Что показывает Авито"

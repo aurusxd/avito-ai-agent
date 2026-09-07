@@ -21,10 +21,11 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN playwright install chromium
 
 # xvfb-run needs xauth, and install-deps needs the package lists that the
-# cleanup at the end removes, so both share one apt transaction
+# cleanup at the end removes, so both share one apt transaction.
+# x11vnc and novnc let an operator finish a captcha in the bot's own browser.
 RUN echo 'Acquire::Retries "8";' > /etc/apt/apt.conf.d/80-retries \
     && apt-get update \
-    && apt-get install -y --no-install-recommends xvfb xauth \
+    && apt-get install -y --no-install-recommends xvfb xauth x11vnc novnc websockify \
     && playwright install-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
@@ -33,7 +34,7 @@ RUN uv sync --frozen --no-dev
 
 RUN chmod +x docker-entrypoint.sh
 
-EXPOSE 8000
+EXPOSE 8000 6080
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -11,11 +11,17 @@ services:
       AVITO_HEADLESS: ${AVITO_HEADLESS:-false}
       BROWSER_NO_SANDBOX: ${BROWSER_NO_SANDBOX:-true}
       BROWSER_DISABLE_DEV_SHM: ${BROWSER_DISABLE_DEV_SHM:-false}
+      VNC_ENABLED: ${VNC_ENABLED:-false}
+      VNC_PASSWORD: ${VNC_PASSWORD:-}
+      VNC_WEB_PORT: 6080
+      VNC_PUBLIC_URL: ${VNC_PUBLIC_URL:-}
     volumes:
       - sqlite-data:/app/data
     shm_size: 1gb
     ports:
       - "${BACKEND_PORT:-8080}:8000"
+      # bound to loopback on purpose: this port drives a signed-in browser
+      - "127.0.0.1:${VNC_PORT:-6080}:6080"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s

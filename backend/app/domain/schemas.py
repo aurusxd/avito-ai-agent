@@ -400,4 +400,5 @@ class LoginSessionRead(BaseModel):
     hint: str | None = None
     account_id: int | None = None
     has_screenshot: bool = False
+    remote_view_url: str | None = None
     expires_at: datetime
