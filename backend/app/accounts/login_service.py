@@ -38,6 +38,10 @@ class LoginRun:
     proxy_url: str | None
     daily_limit: int
     screenshot: bytes | None = None
+    # kept in process memory only, for the life of this login session, so that a
+    # check cleared by hand can be resumed. Wiped the moment the session ends and
+    # never written to the database, a log line or an api response.
+    password: str | None = None
 
 
 _runs: dict[str, LoginRun] = {}
@@ -75,6 +79,7 @@ class LoginService:
             client=self.client,
             proxy_url=payload.proxy_url,
             daily_limit=clamp_daily_limit(payload.daily_limit),
+            password=payload.password.get_secret_value(),
         )
         _runs[session.session_id] = run
 
@@ -119,6 +124,25 @@ class LoginService:
             step = await run.client.submit_code(code.strip())
         except Exception as error:
             await self._finish(run, "failed", f"code check crashed: {describe(error)}")
+            return self._read(run)
+
+        await self._apply(run, step)
+        return self._read(run)
+
+    async def resume(self, session_id: str) -> LoginSessionRead:
+        run = self._require(session_id)
+        await self._sweep(run)
+
+        if is_terminal(run.session):
+            raise ConflictError(f"session is {run.session.status}, there is nothing to resume")
+        if run.password is None:
+            raise ConflictError("this login session can no longer be resumed, start again")
+
+        try:
+            step = await run.client.resume(run.session.login, run.password)
+        except Exception as error:
+            run.screenshot = await self._safe_screenshot(run)
+            await self._finish(run, "failed", f"resume crashed: {describe(error, run.password)}")
             return self._read(run)
 
         await self._apply(run, step)
@@ -209,6 +233,7 @@ class LoginService:
             return None
 
     async def _release(self, run: LoginRun) -> None:
+        run.password = None
         try:
             await run.client.close()
         except Exception:

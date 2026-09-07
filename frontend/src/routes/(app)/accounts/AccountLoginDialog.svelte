@@ -115,10 +115,13 @@
 		}
 	}
 
-	async function refresh() {
+	async function resume() {
 		if (!session) return;
-		const response = await fetch(`/accounts/login/${session.session_id}`);
-		if (response.ok) applySession(await response.json());
+		const next = await send(`/accounts/login/${session.session_id}/resume`);
+		if (next) {
+			applySession(next);
+			if (!TERMINAL.includes(next.status)) startPolling(next.session_id);
+		}
 	}
 
 	async function cancel() {
@@ -256,9 +259,12 @@
 								Окно просит пароль VNC. Не открывайте этот порт наружу: за ним браузер
 								с активной сессией Авито.
 							</p>
-							<Button variant="outline" size="sm" onclick={refresh}>
-								Я прошёл проверку, продолжить
+							<Button variant="outline" size="sm" disabled={busy} onclick={resume}>
+								{busy ? 'Продолжаем...' : 'Я прошёл проверку, продолжить'}
 							</Button>
+							{#if errorMessage}
+								<p class="text-destructive text-sm" role="alert">{errorMessage}</p>
+							{/if}
 						{:else if session.has_screenshot}
 							<img
 								src={`/accounts/login/${session.session_id}/screenshot`}

@@ -1,5 +1,6 @@
 import os
 
+os.environ["APP_SKIP_ENV_FILE"] = "1"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["PANEL_API_TOKEN"] = "test-token"
 

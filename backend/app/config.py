@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -9,9 +10,16 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_ROOT.parent
 
 
+def _env_files() -> tuple[Path, ...] | None:
+    # the test suite opts out so that a developer .env cannot change results
+    if os.getenv("APP_SKIP_ENV_FILE") == "1":
+        return None
+    return (REPO_ROOT / ".env", BACKEND_ROOT / ".env")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(REPO_ROOT / ".env", BACKEND_ROOT / ".env"),
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )

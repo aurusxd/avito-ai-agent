@@ -205,15 +205,31 @@ class PlaywrightAvitoAuthClient:
                 hint=f"could not open avito over {transport}, {describe(error, password)}",
             )
 
+        return await self._sign_in(page, login, password)
+
+    async def resume(self, login: str, password: str) -> LoginStep:
+        # called after a person cleared a check inside the same browser
+        page = self._require_page()
+        try:
+            await page.reload(wait_until="commit", timeout=self.settings.parser_nav_timeout_ms)
+        except Exception as error:
+            logger.debug("reload before resume failed: {reason}", reason=describe(error))
+        return await self._sign_in(page, login, password)
+
+    async def _sign_in(self, page: Page, login: str, password: str) -> LoginStep:
         await self._clear_ip_check(page)
+
+        if await page.query_selector(PROFILE_MENU) is not None:
+            return LoginStep(status="saving", hint="already signed in")
+
+        if await self._code_field(page) is not None:
+            return LoginStep(status="code_required", hint="enter the code avito sent by sms")
 
         try:
             await page.wait_for_selector(
                 LOGIN_BUTTON, state="visible", timeout=self.settings.login_wait_ms
             )
         except Exception:
-            if await page.query_selector(PROFILE_MENU) is not None:
-                return LoginStep(status="saving", hint="already signed in")
             return await self._classify("avito did not show the login form")
 
         await page.evaluate(OPEN_LOGIN_SCRIPT, LOGIN_BUTTON)

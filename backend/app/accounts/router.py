@@ -78,6 +78,11 @@ async def submit_login_code(
     return await service.submit_code(session_id, payload.code)
 
 
+@router.post("/login/{session_id}/resume", response_model=LoginSessionRead)
+async def resume_login(session_id: str, service: LoginDep) -> LoginSessionRead:
+    return await service.resume(session_id)
+
+
 @router.post("/login/{session_id}/cancel", response_model=LoginSessionRead)
 async def cancel_login(session_id: str, service: LoginDep) -> LoginSessionRead:
     return await service.cancel(session_id)

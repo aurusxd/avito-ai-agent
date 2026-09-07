@@ -298,3 +298,81 @@ async def test_remote_view_needs_a_public_url(session, settings) -> None:
     started = await service.start(request(login=CAPTCHA_LOGIN))
 
     assert started.remote_view_url is None
+
+
+async def test_resume_continues_after_a_person_cleared_the_check(session, settings) -> None:
+    auth = FakeAvitoAuthClient(captcha_rounds=1)
+    service = make_service(session, auth, settings)
+
+    started = await service.start(request(login=CAPTCHA_LOGIN))
+    assert started.status == "captcha_required"
+
+    # the operator is still stuck on the check
+    again = await service.resume(started.session_id)
+    assert again.status == "captcha_required"
+
+    # now the check is cleared and the flow walks on
+    moved = await service.resume(started.session_id)
+    assert moved.status == "code_required"
+    assert auth.resume_calls == 2
+
+    done = await service.submit_code(started.session_id, VALID_CODE)
+    assert done.status == "done"
+
+
+async def test_resume_wipes_the_password_once_the_session_ends(session, settings) -> None:
+    from app.accounts.login_service import _runs
+
+    auth = FakeAvitoAuthClient()
+    service = make_service(session, auth, settings)
+
+    started = await service.start(request())
+    assert _runs[started.session_id].password == PASSWORD
+
+    done = await service.submit_code(started.session_id, VALID_CODE)
+
+    assert done.status == "done"
+    assert _runs[started.session_id].password is None
+
+
+async def test_resume_is_rejected_once_the_session_is_terminal(session, settings) -> None:
+    service = make_service(session, FakeAvitoAuthClient(), settings)
+
+    started = await service.start(request())
+    await service.submit_code(started.session_id, VALID_CODE)
+
+    with pytest.raises(ConflictError):
+        await service.resume(started.session_id)
+
+
+async def test_resume_over_http(engine: AsyncEngine, settings: Settings) -> None:
+    app = create_app()
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    auth = FakeAvitoAuthClient(captcha_rounds=1)
+
+    async def override_session():
+        async with factory() as db:
+            yield db
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_auth_client] = lambda: auth
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    headers = {"X-Panel-Token": "test-token"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as client:
+        started = await client.post(
+            "/api/accounts/login",
+            json={"login": CAPTCHA_LOGIN, "password": PASSWORD, "proxy_url": None},
+        )
+        session_id = started.json()["session_id"]
+        assert started.json()["status"] == "captcha_required"
+
+        stuck = await client.post(f"/api/accounts/login/{session_id}/resume")
+        assert stuck.json()["status"] == "captcha_required"
+
+        moved = await client.post(f"/api/accounts/login/{session_id}/resume")
+        assert moved.status_code == 200
+        assert moved.json()["status"] == "code_required"
+        assert PASSWORD not in moved.text
