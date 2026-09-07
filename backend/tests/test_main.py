@@ -36,3 +36,16 @@ async def test_start_scheduler_is_idempotent() -> None:
         shutdown_scheduler()
 
     assert is_running() is False
+
+
+async def test_validation_errors_never_echo_the_rejected_value(client) -> None:
+    response = await client.post(
+        "/api/categories", json={"name": "", "avito_url_or_slug": "x", "region": "sensitive-value"}
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "validation_error"
+    assert "sensitive-value" not in response.text
+    for detail in body["error"]["details"]:
+        assert set(detail) <= {"loc", "msg", "type"}

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.auth_session import LoginStatusLiteral
 from app.domain.rotation import MAX_DAILY_LIMIT, AccountStatusLiteral, BlockKindLiteral
@@ -383,14 +383,12 @@ class DashboardStats(BaseModel):
 
 
 class LoginStartRequest(BaseModel):
+    # forbid extras so that a password cannot even be posted here by mistake
+    model_config = ConfigDict(extra="forbid")
+
     login: str = Field(min_length=1, max_length=255)
-    password: SecretStr = Field(min_length=1)
     proxy_url: str | None = Field(default=None, max_length=512)
     daily_limit: int = Field(default=MAX_DAILY_LIMIT, ge=1, le=MAX_DAILY_LIMIT)
-
-
-class LoginCodeRequest(BaseModel):
-    code: str = Field(min_length=1, max_length=12)
 
 
 class LoginSessionRead(BaseModel):

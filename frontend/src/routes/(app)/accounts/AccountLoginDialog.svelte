@@ -12,15 +12,13 @@
 	let session: LoginSession | null = $state(null);
 	let errorMessage: string | null = $state(null);
 	let busy = $state(false);
-	let code = $state('');
 	let poller: ReturnType<typeof setInterval> | null = null;
 
 	const TERMINAL: LoginStatus[] = ['done', 'failed', 'expired'];
 
 	const statusLabel: Record<LoginStatus, string> = {
 		starting: 'открываем браузер',
-		code_required: 'ждём код из СМС',
-		captcha_required: 'нужна проверка человеком',
+		waiting_for_operator: 'войдите в окне',
 		saving: 'сохраняем сессию',
 		done: 'готово',
 		failed: 'не получилось',
@@ -40,7 +38,7 @@
 			const response = await fetch(`/accounts/login/${id}`);
 			if (!response.ok) return;
 			applySession(await response.json());
-		}, 3000);
+		}, 5000);
 	}
 
 	function applySession(next: LoginSession) {
@@ -59,7 +57,6 @@
 	function reset() {
 		session = null;
 		errorMessage = null;
-		code = '';
 		busy = false;
 	}
 
@@ -86,14 +83,13 @@
 		}
 	}
 
-	async function submitCredentials(event: SubmitEvent) {
+	async function openBrowser(event: SubmitEvent) {
 		event.preventDefault();
 		const form = new FormData(event.currentTarget as HTMLFormElement);
 		const proxy = String(form.get('proxy_url') ?? '').trim();
 
 		const next = await send('/accounts/login', {
 			login: String(form.get('login') ?? '').trim(),
-			password: String(form.get('password') ?? ''),
 			proxy_url: proxy || null,
 			daily_limit: Number(form.get('daily_limit') ?? 15)
 		});
@@ -104,24 +100,10 @@
 		}
 	}
 
-	async function submitCode(event: SubmitEvent) {
-		event.preventDefault();
+	async function confirm() {
 		if (!session) return;
-
-		const next = await send(`/accounts/login/${session.session_id}/code`, { code: code.trim() });
-		if (next) {
-			code = '';
-			applySession(next);
-		}
-	}
-
-	async function resume() {
-		if (!session) return;
-		const next = await send(`/accounts/login/${session.session_id}/resume`);
-		if (next) {
-			applySession(next);
-			if (!TERMINAL.includes(next.status)) startPolling(next.session_id);
-		}
+		const next = await send(`/accounts/login/${session.session_id}/confirm`);
+		if (next) applySession(next);
 	}
 
 	async function cancel() {
@@ -142,33 +124,26 @@
 <Dialog.Root bind:open onOpenChange={(value) => (value ? reset() : cancel())}>
 	<Dialog.Trigger>
 		{#snippet child({ props })}
-			<Button {...props}>Войти в аккаунт</Button>
+			<Button {...props}>Добавить аккаунт</Button>
 		{/snippet}
 	</Dialog.Trigger>
-	<Dialog.Content class="sm:max-w-lg">
+	<Dialog.Content class="sm:max-w-3xl">
 		<Dialog.Header>
-			<Dialog.Title>Вход в аккаунт Авито</Dialog.Title>
+			<Dialog.Title>Новый аккаунт Авито</Dialog.Title>
 			<Dialog.Description>
-				Бот откроет браузер, войдёт под этими данными и сохранит сессию. Пароль нигде не
-				сохраняется.
+				Бот откроет браузер, вы войдёте в аккаунт сами, бот сохранит сессию. Логин и пароль
+				панель не спрашивает и нигде не хранит.
 			</Dialog.Description>
 		</Dialog.Header>
 
 		{#if !session}
-			<form class="space-y-4" onsubmit={submitCredentials}>
+			<form class="space-y-4" onsubmit={openBrowser}>
 				<div class="space-y-2">
-					<Label for="login-field">Телефон или почта</Label>
+					<Label for="login-field">Название аккаунта</Label>
 					<Input id="login-field" name="login" autocomplete="off" required />
-				</div>
-				<div class="space-y-2">
-					<Label for="password-field">Пароль</Label>
-					<Input
-						id="password-field"
-						name="password"
-						type="password"
-						autocomplete="off"
-						required
-					/>
+					<p class="text-muted-foreground text-xs">
+						Только для отображения в панели, например номер телефона или метка «основной».
+					</p>
 				</div>
 				<div class="space-y-2">
 					<Label for="proxy-field">Прокси аккаунта</Label>
@@ -199,7 +174,7 @@
 				{/if}
 				<Dialog.Footer>
 					<Button type="submit" disabled={busy}>
-						{busy ? 'Запускаем...' : 'Войти'}
+						{busy ? 'Открываем браузер...' : 'Открыть браузер'}
 					</Button>
 				</Dialog.Footer>
 			</form>
@@ -216,70 +191,41 @@
 					<span class="text-muted-foreground text-sm">{session.login}</span>
 				</div>
 
-				{#if session.hint}
+				{#if session.status === 'waiting_for_operator' && session.remote_view_url}
+					<p class="text-sm">
+						Войдите в аккаунт Авито в окне ниже: почта или телефон, пароль, код из СМС,
+						проверка, если попросит. Когда увидите, что вы вошли, нажмите кнопку под окном.
+					</p>
+					<div class="border-border overflow-hidden rounded-md border">
+						<iframe
+							src={session.remote_view_url}
+							title="Браузер бота"
+							class="h-[34rem] w-full"
+						></iframe>
+					</div>
+					<p class="text-muted-foreground text-xs">
+						Окно просит пароль VNC. Не открывайте этот порт наружу: за ним браузер, который
+						станет рабочей сессией аккаунта.
+					</p>
+					<Button disabled={busy} onclick={confirm}>
+						{busy ? 'Проверяем...' : 'Я вошёл, сохранить сессию'}
+					</Button>
+					{#if session.hint}
+						<p class="text-muted-foreground text-sm">{session.hint}</p>
+					{/if}
+				{:else if session.status === 'starting' || session.status === 'saving'}
+					<p class="text-muted-foreground text-sm">Секунду, готовим браузер.</p>
+				{:else if session.hint}
 					<p class="text-sm">{session.hint}</p>
 				{/if}
 
-				{#if session.status === 'code_required'}
-					<form class="space-y-3" onsubmit={submitCode}>
-						<div class="space-y-2">
-							<Label for="code-field">Код из СМС</Label>
-							<Input
-								id="code-field"
-								bind:value={code}
-								inputmode="numeric"
-								autocomplete="off"
-								required
-							/>
-						</div>
-						{#if errorMessage}
-							<p class="text-destructive text-sm" role="alert">{errorMessage}</p>
-						{/if}
-						<Button type="submit" disabled={busy}>
-							{busy ? 'Проверяем...' : 'Подтвердить'}
-						</Button>
-					</form>
-				{:else if session.status === 'captcha_required'}
-					<div class="space-y-3">
-						<p class="text-sm">
-							{session.remote_view_url
-								? 'Авито показал проверку. Пройдите её сами в окне ниже: это тот самый браузер, в котором работает бот.'
-								: 'Авито показал проверку. Автоматически она не проходится, нужен человек за браузером на сервере.'}
-						</p>
-
-						{#if session.remote_view_url}
-							<div class="border-border overflow-hidden rounded-md border">
-								<iframe
-									src={session.remote_view_url}
-									title="Браузер бота"
-									class="h-[28rem] w-full"
-								></iframe>
-							</div>
-							<p class="text-muted-foreground text-xs">
-								Окно просит пароль VNC. Не открывайте этот порт наружу: за ним браузер
-								с активной сессией Авито.
-							</p>
-							<Button variant="outline" size="sm" disabled={busy} onclick={resume}>
-								{busy ? 'Продолжаем...' : 'Я прошёл проверку, продолжить'}
-							</Button>
-							{#if errorMessage}
-								<p class="text-destructive text-sm" role="alert">{errorMessage}</p>
-							{/if}
-						{:else if session.has_screenshot}
-							<img
-								src={`/accounts/login/${session.session_id}/screenshot`}
-								alt="Что показывает Авито"
-								class="border-border w-full rounded-md border"
-							/>
-						{/if}
-					</div>
-				{:else if session.status === 'starting' || session.status === 'saving'}
-					<p class="text-muted-foreground text-sm">Идёт вход, это занимает до минуты.</p>
+				{#if errorMessage}
+					<p class="text-destructive text-sm" role="alert">{errorMessage}</p>
 				{/if}
 
-				{#if session.has_screenshot && session.status !== 'captcha_required'}
+				{#if session.has_screenshot && session.status !== 'waiting_for_operator'}
 					<details class="text-sm">
-						<summary class="cursor-pointer">Что сейчас показывает Авито</summary>
+						<summary class="cursor-pointer">Что показывает Авито</summary>
 						<img
 							src={`/accounts/login/${session.session_id}/screenshot`}
 							alt="Экран браузера бота"
@@ -289,10 +235,7 @@
 				{/if}
 
 				<Dialog.Footer>
-					{#if session.status === 'failed' || session.status === 'expired'}
-						<Button variant="outline" onclick={reset}>Попробовать снова</Button>
-					{/if}
-					<Button variant="ghost" onclick={cancel}>Закрыть</Button>
+					<Button variant="outline" onclick={cancel}>Закрыть</Button>
 				</Dialog.Footer>
 			</div>
 		{/if}

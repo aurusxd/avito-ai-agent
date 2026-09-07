@@ -18,7 +18,7 @@ from app.domain.auth_session import (
     LoginStatusLiteral,
     advance,
     awaits_operator,
-    can_submit_code,
+    can_confirm,
     expire,
     expires_at,
     is_terminal,
@@ -26,7 +26,7 @@ from app.domain.auth_session import (
 from app.domain.proxy import mask_proxy_url
 from app.domain.rotation import clamp_daily_limit
 from app.domain.schemas import LoginSessionRead, LoginStartRequest
-from app.errors import ConflictError, NotFoundError, ValidationFailedError
+from app.errors import AppError, ConflictError, NotFoundError
 
 SLUG = re.compile(r"[^a-z0-9._-]+")
 
@@ -38,10 +38,6 @@ class LoginRun:
     proxy_url: str | None
     daily_limit: int
     screenshot: bytes | None = None
-    # kept in process memory only, for the life of this login session, so that a
-    # check cleared by hand can be resumed. Wiped the moment the session ends and
-    # never written to the database, a log line or an api response.
-    password: str | None = None
 
 
 _runs: dict[str, LoginRun] = {}
@@ -57,6 +53,12 @@ def _slug(login: str) -> str:
 
 
 class LoginService:
+    """Hands a browser to a person and keeps whatever session they create.
+
+    The sign in itself is entirely manual: the operator works in the bot's own
+    browser over noVNC. Nothing here sees a password, a captcha or an sms code.
+    """
+
     def __init__(self, session: AsyncSession, client: AvitoAuthClient, settings: Settings) -> None:
         self.session = session
         self.client = client
@@ -65,42 +67,29 @@ class LoginService:
     async def start(self, request: LoginStartRequest) -> LoginSessionRead:
         payload = LoginStartRequest.model_validate(request)
         await self._ensure_login_free(payload.login)
+        self._ensure_remote_view_ready()
 
         now = datetime.now(UTC)
-        session = LoginSession(
-            session_id=uuid4().hex,
-            login=payload.login,
-            status="starting",
-            created_at=now,
-            updated_at=now,
-        )
         run = LoginRun(
-            session=session,
+            session=LoginSession(
+                session_id=uuid4().hex,
+                login=payload.login,
+                status="starting",
+                created_at=now,
+                updated_at=now,
+            ),
             client=self.client,
             proxy_url=payload.proxy_url,
             daily_limit=clamp_daily_limit(payload.daily_limit),
-            password=payload.password.get_secret_value(),
         )
-        _runs[session.session_id] = run
+        _runs[run.session.session_id] = run
 
         try:
-            step = await self.client.start(
-                payload.login,
-                payload.password.get_secret_value(),
-                payload.proxy_url,
-            )
+            step = await self.client.open(payload.proxy_url)
         except Exception as error:
-            logger.warning(
-                "login for {login} crashed: {kind}",
-                login=payload.login,
-                kind=type(error).__name__,
-            )
+            logger.warning("opening the browser crashed: {reason}", reason=describe(error))
             run.screenshot = await self._safe_screenshot(run)
-            await self._finish(
-                run,
-                "failed",
-                f"login crashed: {describe(error, payload.password.get_secret_value())}",
-            )
+            await self._finish(run, "failed", f"browser crashed: {describe(error)}")
             return self._read(run)
 
         await self._apply(run, step)
@@ -111,38 +100,18 @@ class LoginService:
         await self._sweep(run)
         return self._read(run)
 
-    async def submit_code(self, session_id: str, code: str) -> LoginSessionRead:
+    async def confirm(self, session_id: str) -> LoginSessionRead:
         run = self._require(session_id)
         await self._sweep(run)
 
-        if not can_submit_code(run.session):
-            raise ConflictError(f"session is in status {run.session.status}, it expects no code")
-        if not code.strip():
-            raise ValidationFailedError("code must not be empty")
+        if not can_confirm(run.session):
+            raise ConflictError(f"session is {run.session.status}, there is nothing to confirm")
 
         try:
-            step = await run.client.submit_code(code.strip())
-        except Exception as error:
-            await self._finish(run, "failed", f"code check crashed: {describe(error)}")
-            return self._read(run)
-
-        await self._apply(run, step)
-        return self._read(run)
-
-    async def resume(self, session_id: str) -> LoginSessionRead:
-        run = self._require(session_id)
-        await self._sweep(run)
-
-        if is_terminal(run.session):
-            raise ConflictError(f"session is {run.session.status}, there is nothing to resume")
-        if run.password is None:
-            raise ConflictError("this login session can no longer be resumed, start again")
-
-        try:
-            step = await run.client.resume(run.session.login, run.password)
+            step = await run.client.check()
         except Exception as error:
             run.screenshot = await self._safe_screenshot(run)
-            await self._finish(run, "failed", f"resume crashed: {describe(error, run.password)}")
+            await self._finish(run, "failed", f"session check crashed: {describe(error)}")
             return self._read(run)
 
         await self._apply(run, step)
@@ -161,23 +130,21 @@ class LoginService:
         return run.screenshot
 
     async def _apply(self, run: LoginRun, step: LoginStep) -> None:
-        status = step.status
-        hint = step.hint
         now = datetime.now(UTC)
 
-        if status != "saving":
+        if step.status != "saving":
             run.screenshot = await self._safe_screenshot(run)
 
-        if status == "saving":
+        if step.status == "saving":
             await self._persist(run, now)
             return
 
-        if status == "failed":
-            await self._finish(run, "failed", hint)
+        if step.status == "failed":
+            await self._finish(run, "failed", step.hint)
             return
 
         run.session = advance(
-            run.session, status, now, hint=hint, has_screenshot=bool(run.screenshot)
+            run.session, step.status, now, hint=step.hint, has_screenshot=bool(run.screenshot)
         )
 
     async def _persist(self, run: LoginRun, now: datetime) -> None:
@@ -205,7 +172,7 @@ class LoginService:
         await self.session.refresh(account)
 
         logger.info(
-            "account {login} signed in and stored, proxy {proxy}",
+            "account {login} signed in by hand and stored, proxy {proxy}",
             login=account.login,
             proxy=mask_proxy_url(run.proxy_url) if run.proxy_url else "direct",
         )
@@ -233,7 +200,6 @@ class LoginService:
             return None
 
     async def _release(self, run: LoginRun) -> None:
-        run.password = None
         try:
             await run.client.close()
         except Exception:
@@ -252,17 +218,23 @@ class LoginService:
             raise NotFoundError(f"login session {session_id} not found")
         return run
 
+    def _ensure_remote_view_ready(self) -> None:
+        # the operator signs in inside the browser, so without the remote view
+        # there is no way to finish and the session would only time out
+        if not self.settings.vnc_enabled or not self.settings.vnc_public_url:
+            raise AppError(
+                "remote browser view is off: set VNC_ENABLED, VNC_PASSWORD and "
+                "VNC_PUBLIC_URL, otherwise nobody can sign in"
+            )
+
     async def _ensure_login_free(self, login: str) -> None:
         if await self.session.scalar(select(Account.id).where(Account.login == login)) is not None:
             raise ConflictError(f"account with login {login!r} already exists")
 
     def _remote_view_url(self, run: LoginRun) -> str | None:
-        # only handed out while a person is actually needed at the browser
-        if not self.settings.vnc_enabled or not self.settings.vnc_public_url:
-            return None
         if not awaits_operator(run.session):
             return None
-        return self.settings.vnc_public_url
+        return self.settings.vnc_public_url or None
 
     def _read(self, run: LoginRun) -> LoginSessionRead:
         return LoginSessionRead(

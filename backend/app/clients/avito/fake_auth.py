@@ -1,44 +1,36 @@
 from app.clients.avito.base import LoginStep
 
-VALID_CODE = "111111"
-CAPTCHA_LOGIN = "captcha-user"
-BAD_PASSWORD = "wrong"
+BROKEN_PROXY = "http://broken"
 
 
 class FakeAvitoAuthClient:
     provider = "fake"
 
-    def __init__(self, code: str = VALID_CODE, captcha_rounds: int = 0) -> None:
-        self.expected_code = code
-        self.captcha_rounds = captcha_rounds
-        self.resume_calls = 0
-        self.login: str | None = None
+    def __init__(self, signs_in_after: int = 1) -> None:
+        # how many checks it takes before the fake operator is signed in
+        self.signs_in_after = signs_in_after
+        self.checks = 0
         self.proxy_url: str | None = None
+        self.opened = False
         self.closed = False
-        self.code_attempts = 0
-        self.saw_password = False
 
-    async def start(self, login: str, password: str, proxy_url: str | None = None) -> LoginStep:
-        self.login = login
+    async def open(self, proxy_url: str | None = None) -> LoginStep:
         self.proxy_url = proxy_url
-        self.saw_password = bool(password)
+        if proxy_url == BROKEN_PROXY:
+            return LoginStep(status="failed", hint="could not open avito over the proxy")
+        self.opened = True
+        return LoginStep(
+            status="waiting_for_operator",
+            hint="sign in to avito in the window below, then press the button",
+        )
 
-        if not password or password == BAD_PASSWORD:
-            return LoginStep(status="failed", hint="avito rejected the login or password")
-        if login == CAPTCHA_LOGIN:
-            return LoginStep(status="captcha_required", hint="avito asks for a captcha")
-        return LoginStep(status="code_required", hint="enter the code from the sms")
-
-    async def resume(self, login: str, password: str) -> LoginStep:
-        self.resume_calls += 1
-        if login == CAPTCHA_LOGIN and self.resume_calls <= self.captcha_rounds:
-            return LoginStep(status="captcha_required", hint="avito asks for a captcha")
-        return LoginStep(status="code_required", hint="enter the code from the sms")
-
-    async def submit_code(self, code: str) -> LoginStep:
-        self.code_attempts += 1
-        if code != self.expected_code:
-            return LoginStep(status="code_required", hint="wrong code, try again")
+    async def check(self) -> LoginStep:
+        self.checks += 1
+        if self.checks < self.signs_in_after:
+            return LoginStep(
+                status="waiting_for_operator",
+                hint="avito still shows the sign in button, finish the login in the window",
+            )
         return LoginStep(status="saving", hint=None)
 
     async def storage_state(self) -> dict[str, object]:

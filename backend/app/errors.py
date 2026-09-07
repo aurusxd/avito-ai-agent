@@ -1,3 +1,5 @@
+from typing import cast
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -46,11 +48,24 @@ async def handle_app_error(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=_payload(exc.code, exc.message))
 
 
+def _safe_details(errors: list[dict[str, object]]) -> list[dict[str, object]]:
+    # pydantic echoes the rejected value back, which would hand a mistyped
+    # password or token straight to the caller
+    return [
+        {key: value for key, value in error.items() if key in ("loc", "msg", "type")}
+        for error in errors
+    ]
+
+
 async def handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
     return JSONResponse(
         status_code=422,
-        content=_payload("validation_error", "request payload is invalid", exc.errors()),
+        content=_payload(
+            "validation_error",
+            "request payload is invalid",
+            _safe_details(cast("list[dict[str, object]]", exc.errors())),
+        ),
     )
 
 

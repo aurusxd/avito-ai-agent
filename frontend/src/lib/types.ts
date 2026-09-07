@@ -166,8 +166,7 @@ export type DashboardStats = {
 
 export type LoginStatus =
 	| 'starting'
-	| 'code_required'
-	| 'captcha_required'
+	| 'waiting_for_operator'
 	| 'saving'
 	| 'done'
 	| 'failed'

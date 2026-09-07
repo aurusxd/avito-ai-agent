@@ -4,8 +4,7 @@ from typing import Literal
 
 LoginStatusLiteral = Literal[
     "starting",
-    "code_required",
-    "captcha_required",
+    "waiting_for_operator",
     "saving",
     "done",
     "failed",
@@ -13,9 +12,9 @@ LoginStatusLiteral = Literal[
 ]
 
 TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "failed", "expired"})
-AWAITING_OPERATOR: frozenset[str] = frozenset({"code_required", "captcha_required"})
+AWAITING_OPERATOR: frozenset[str] = frozenset({"waiting_for_operator"})
 
-DEFAULT_TTL_SECONDS = 600
+DEFAULT_TTL_SECONDS = 900
 
 
 @dataclass(frozen=True)
@@ -38,8 +37,8 @@ def awaits_operator(session: LoginSession) -> bool:
     return session.status in AWAITING_OPERATOR
 
 
-def can_submit_code(session: LoginSession) -> bool:
-    return session.status == "code_required"
+def can_confirm(session: LoginSession) -> bool:
+    return session.status == "waiting_for_operator"
 
 
 def expires_at(session: LoginSession, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> datetime:

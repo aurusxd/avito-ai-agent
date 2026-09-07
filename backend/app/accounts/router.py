@@ -13,7 +13,6 @@ from app.domain.schemas import (
     AccountCreate,
     AccountRead,
     AccountUpdate,
-    LoginCodeRequest,
     LoginSessionRead,
     LoginStartRequest,
     RotationPreview,
@@ -71,16 +70,9 @@ async def login_state(session_id: str, service: LoginDep) -> LoginSessionRead:
     return await service.state(session_id)
 
 
-@router.post("/login/{session_id}/code", response_model=LoginSessionRead)
-async def submit_login_code(
-    session_id: str, payload: LoginCodeRequest, service: LoginDep
-) -> LoginSessionRead:
-    return await service.submit_code(session_id, payload.code)
-
-
-@router.post("/login/{session_id}/resume", response_model=LoginSessionRead)
-async def resume_login(session_id: str, service: LoginDep) -> LoginSessionRead:
-    return await service.resume(session_id)
+@router.post("/login/{session_id}/confirm", response_model=LoginSessionRead)
+async def confirm_login(session_id: str, service: LoginDep) -> LoginSessionRead:
+    return await service.confirm(session_id)
 
 
 @router.post("/login/{session_id}/cancel", response_model=LoginSessionRead)
