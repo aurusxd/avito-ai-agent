@@ -82,7 +82,16 @@ CREDENTIAL_ERROR_MARKERS = (
     "проверьте логин",
     "неверный пароль",
 )
-BLOCKED_MARKERS = ("доступ ограничен", "слишком много попыток", "временно заблокирован")
+BLOCKED_MARKERS = ("слишком много попыток", "временно заблокирован")
+# avito shows this before the captcha when the exit ip has a bad reputation;
+# the operator fix is a clean address, not a person clicking through
+IP_BLOCK_MARKERS = (
+    "доступ ограничен",
+    "проблема с ip",
+    "слишком много запросов",
+    "возможно, у вас включён vpn",
+    "возможно, у вас включен vpn",
+)
 
 
 def scrub(message: str, secret: str) -> str:
@@ -99,6 +108,24 @@ def _short(value: str, limit: int = 160) -> str:
     collapsed = " ".join(value.split())
     return collapsed[:limit] if collapsed else "empty popup"
 
+
+# the ip-check page offers a "Продолжить" button that leads to the challenge.
+# Pressing it is plain navigation, it solves nothing: a real captcha still stops
+# the flow for a human.
+CONTINUE_SCRIPT = """
+() => {
+  const visible = (el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const target = [...document.querySelectorAll('button, a, [role="button"]')]
+    .filter(visible)
+    .find((el) => (el.textContent || '').trim().toLowerCase().startsWith('продолжить'));
+  if (!target) return null;
+  target.click();
+  return (target.textContent || '').trim();
+}
+"""
 
 OPEN_LOGIN_SCRIPT = """
 (selector) => {
@@ -177,6 +204,8 @@ class PlaywrightAvitoAuthClient:
                 status="failed",
                 hint=f"could not open avito over {transport}, {describe(error, password)}",
             )
+
+        await self._clear_ip_check(page)
 
         try:
             await page.wait_for_selector(
@@ -295,6 +324,26 @@ class PlaywrightAvitoAuthClient:
             ),
         )
 
+    async def _clear_ip_check(self, page: Page) -> None:
+        for attempt in range(1, self.settings.login_ip_check_attempts + 1):
+            probe = await self._settled_probe(page)
+            body = str(probe.get("bodyText", "")).lower()
+            if not any(marker in body for marker in IP_BLOCK_MARKERS):
+                return
+
+            label = await page.evaluate(CONTINUE_SCRIPT)
+            if not label:
+                logger.info("ip check page has no continue button, leaving it to a human")
+                return
+
+            logger.info(
+                "ip check: pressed {label} ({attempt}/{total})",
+                label=label,
+                attempt=attempt,
+                total=self.settings.login_ip_check_attempts,
+            )
+            await page.wait_for_timeout(self.settings.login_settle_ms)
+
     async def _settled_probe(self, page: Page) -> dict[str, Any]:
         probe: dict[str, Any] = {}
         for _ in range(10):
@@ -358,6 +407,16 @@ class PlaywrightAvitoAuthClient:
 
         # the marker has to be visible to a human: avito ships bundles whose file
         # names contain "captcha" on every page, so raw html always matches
+        if any(marker in body_text for marker in IP_BLOCK_MARKERS):
+            return LoginStep(
+                status="captcha_required",
+                hint=(
+                    "avito restricted this ip, not the account: it wants a clean address. "
+                    "Sign in through the sticky mobile proxy this account will run on, "
+                    "or have a person clear the check in the browser"
+                ),
+            )
+
         if int(probe.get("captchaWidgets") or 0) > 0 or any(
             marker in body_text for marker in CAPTCHA_TEXT_MARKERS
         ):

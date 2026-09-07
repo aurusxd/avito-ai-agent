@@ -4,9 +4,13 @@ COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /bin/
 
 WORKDIR /app
 
+# DISPLAY lives in the image env so that docker exec sessions (the login doctor,
+# ad hoc debugging) reach the same virtual display the server uses
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    DISPLAY_NUM=99 \
+    DISPLAY=:99
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev

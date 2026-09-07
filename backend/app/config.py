@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     browser_no_sandbox: bool = False
     browser_disable_dev_shm: bool = False
     login_wait_ms: int = Field(default=60_000, ge=1_000)
+    login_ip_check_attempts: int = Field(default=2, ge=0, le=5)
     login_settle_ms: int = Field(default=6_000, ge=0)
     login_session_ttl_seconds: int = Field(default=600, ge=60, le=3_600)
     sessions_dir: str = "data/sessions"

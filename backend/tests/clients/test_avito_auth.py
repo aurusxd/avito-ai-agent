@@ -3,6 +3,7 @@ from typing import Any
 from app.clients.avito.browser import explain_launch_failure, launch_args
 from app.clients.avito.playwright_auth import (
     CAPTCHA_TEXT_MARKERS,
+    IP_BLOCK_MARKERS,
     PlaywrightAvitoAuthClient,
     _short,
     describe,
@@ -194,3 +195,20 @@ def test_captcha_widget_counts_even_without_text() -> None:
     state = full_probe(captchaWidgets=1)
 
     assert int(state["captchaWidgets"]) > 0
+
+
+def test_ip_block_page_is_told_apart_from_a_captcha() -> None:
+    page_text = (
+        "Доступ ограничен: проблема с IP. Иногда такое случается, чтобы вернуться "
+        "на сайт нажмите на кнопку Продолжить для решения капчи."
+    ).lower()
+
+    assert any(marker in page_text for marker in IP_BLOCK_MARKERS)
+    assert not any(marker in page_text for marker in CAPTCHA_TEXT_MARKERS)
+
+
+def test_plain_captcha_is_not_read_as_an_ip_block() -> None:
+    page_text = "подтвердите, что вы не робот"
+
+    assert any(marker in page_text for marker in CAPTCHA_TEXT_MARKERS)
+    assert not any(marker in page_text for marker in IP_BLOCK_MARKERS)
