@@ -182,3 +182,20 @@ export type LoginSession = {
 	remote_view_url: string | null;
 	expires_at: string;
 };
+
+export type ProxyBalance = {
+	proxy_type: string;
+	network: string;
+	remaining_mb: number;
+	remaining_gb: number;
+	traffic_ready: boolean;
+};
+
+export type ProxyIssueResult = {
+	url: string;
+	masked_url: string;
+	session_id: string | null;
+	lifetime_minutes: number;
+	country: string;
+	city: string | null;
+};

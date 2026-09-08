@@ -15,6 +15,10 @@ services:
       VNC_PASSWORD: ${VNC_PASSWORD:-}
       VNC_WEB_PORT: 6080
       VNC_PUBLIC_URL: ${VNC_PUBLIC_URL:-}
+      PROXY_PROVIDER: ${PROXY_PROVIDER:-fake}
+      PROXY_API_KEY: ${PROXY_API_KEY:-}
+      PROXY_DEFAULT_TYPE: ${PROXY_DEFAULT_TYPE:-residential}
+      PROXY_DEFAULT_COUNTRY: ${PROXY_DEFAULT_COUNTRY:-RU}
     volumes:
       - sqlite-data:/app/data
     shm_size: 1gb

@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     login_ip_check_attempts: int = Field(default=2, ge=0, le=5)
     vnc_enabled: bool = False
     vnc_public_url: str = ""
+
+    proxy_provider: Literal["fake", "lteboost"] = "fake"
+    proxy_api_key: str = ""
+    proxy_api_base_url: str = "https://gb.lteboost.com/api/client/v1"
+    proxy_api_timeout_seconds: float = Field(default=30.0, ge=1.0)
+    proxy_default_country: str = "RU"
+    proxy_default_type: Literal["mobile", "residential", "datacenter"] = "residential"
+    proxy_default_lifetime_minutes: int = Field(default=10_080, ge=1, le=10_080)
     login_settle_ms: int = Field(default=6_000, ge=0)
     login_session_ttl_seconds: int = Field(default=600, ge=60, le=3_600)
     sessions_dir: str = "data/sessions"

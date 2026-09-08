@@ -6,13 +6,16 @@
 	import * as Dialog from '$lib/ui/dialog/index.js';
 	import { Input } from '$lib/ui/input/index.js';
 	import { Label } from '$lib/ui/label/index.js';
-	import type { LoginSession, LoginStatus } from '$lib/types';
+	import type { LoginSession, LoginStatus, ProxyIssueResult } from '$lib/types';
 
 	let open = $state(false);
 	let session: LoginSession | null = $state(null);
 	let errorMessage: string | null = $state(null);
 	let busy = $state(false);
 	let poller: ReturnType<typeof setInterval> | null = null;
+	let proxyUrl = $state('');
+	let proxyNote: string | null = $state(null);
+	let issuing = $state(false);
 
 	const TERMINAL: LoginStatus[] = ['done', 'failed', 'expired'];
 
@@ -58,6 +61,8 @@
 		session = null;
 		errorMessage = null;
 		busy = false;
+		proxyUrl = '';
+		proxyNote = null;
 	}
 
 	async function send(url: string, body?: unknown) {
@@ -80,6 +85,31 @@
 			return null;
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function issueProxy() {
+		issuing = true;
+		errorMessage = null;
+		try {
+			const response = await fetch('/accounts/proxy/issue', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({})
+			});
+			const payload = await response.json();
+			if (!response.ok) {
+				errorMessage = payload.message ?? 'Провайдер не выдал прокси';
+				return;
+			}
+			const issued = payload as ProxyIssueResult;
+			proxyUrl = issued.url;
+			const days = Math.round(issued.lifetime_minutes / 1440);
+			proxyNote = `${issued.masked_url}, сессия ${issued.session_id ?? '?'}, ${issued.country}, держится до ${days} сут.`;
+		} catch {
+			errorMessage = 'Панель не смогла достучаться до бэкенда';
+		} finally {
+			issuing = false;
 		}
 	}
 
@@ -146,16 +176,32 @@
 					</p>
 				</div>
 				<div class="space-y-2">
-					<Label for="proxy-field">Прокси аккаунта</Label>
+					<div class="flex items-center justify-between gap-2">
+						<Label for="proxy-field">Прокси аккаунта</Label>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={issuing}
+							onclick={issueProxy}
+						>
+							{issuing ? 'Выдаём...' : 'Выдать прокси'}
+						</Button>
+					</div>
 					<Input
 						id="proxy-field"
 						name="proxy_url"
+						bind:value={proxyUrl}
 						placeholder="http://user:pass@host:port"
 						autocomplete="off"
 					/>
-					<p class="text-muted-foreground text-xs">
-						Вход должен идти через тот же прокси, на котором аккаунт будет работать.
-					</p>
+					{#if proxyNote}
+						<p class="text-muted-foreground text-xs">{proxyNote}</p>
+					{:else}
+						<p class="text-muted-foreground text-xs">
+							Вход должен идти через тот же прокси, на котором аккаунт будет работать.
+						</p>
+					{/if}
 				</div>
 				<div class="space-y-2">
 					<Label for="limit-field">Суточный лимит</Label>

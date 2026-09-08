@@ -1,6 +1,12 @@
 import { fail } from '@sveltejs/kit';
 import { ApiError, PANEL_TOKEN_COOKIE, apiFetch } from '$lib/api';
-import type { Account, AccountCreate, AccountUpdate, RotationPreview } from '$lib/types';
+import type {
+	Account,
+	AccountCreate,
+	AccountUpdate,
+	ProxyBalance,
+	RotationPreview
+} from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
 function token(cookies: { get: (name: string) => string | undefined }): string | undefined {
@@ -20,10 +26,20 @@ export const load: PageServerLoad = async ({ cookies, fetch }) => {
 			apiFetch<Account[]>('/api/accounts', { token: token(cookies), fetch }),
 			apiFetch<RotationPreview>('/api/accounts/rotation', { token: token(cookies), fetch })
 		]);
-		return { accounts, rotation, loadError: null };
+		// the provider can be down without breaking the page
+		const proxyBalances = await apiFetch<ProxyBalance[]>('/api/accounts/proxy/balances', {
+			token: token(cookies),
+			fetch
+		}).catch(() => [] as ProxyBalance[]);
+		return { accounts, rotation, proxyBalances, loadError: null };
 	} catch (error) {
 		if (error instanceof ApiError) {
-			return { accounts: [] as Account[], rotation: null, loadError: error.message };
+			return {
+				accounts: [] as Account[],
+				rotation: null,
+				proxyBalances: [] as ProxyBalance[],
+				loadError: error.message
+			};
 		}
 		throw error;
 	}

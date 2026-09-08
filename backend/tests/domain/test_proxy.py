@@ -1,7 +1,7 @@
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.domain.proxy import mask_proxy_url, proxy_settings
+from app.domain.proxy import line_to_url, mask_proxy_url, proxy_settings, session_id_from_line
 
 secrets = st.text(
     alphabet=st.characters(min_codepoint=33, max_codepoint=126, blacklist_characters=":@/?#[]%"),
@@ -66,6 +66,55 @@ def test_proxy_settings_keep_credentials_out_of_the_server_field(
 
     assert settings is not None
     assert settings["server"] == f"{scheme}://{host}:{port}"
-    assert password not in settings["server"]
     assert settings.get("username") == user
     assert settings.get("password") == password
+
+
+LINE = (
+    "res.lteboost.com:1000:user_e0121bae:pw_country-RU_city-Moscow_lifetime-10080_session-lf33lu8z"
+)
+
+
+def test_line_to_url_builds_a_usable_proxy_url() -> None:
+    url = line_to_url(LINE)
+
+    assert url == (
+        "http://user_e0121bae:pw_country-RU_city-Moscow_lifetime-10080_session-lf33lu8z"
+        "@res.lteboost.com:1000"
+    )
+    assert proxy_settings(url) == {
+        "server": "http://res.lteboost.com:1000",
+        "username": "user_e0121bae",
+        "password": "pw_country-RU_city-Moscow_lifetime-10080_session-lf33lu8z",
+    }
+
+
+def test_line_to_url_honours_the_protocol() -> None:
+    url = line_to_url("res.lteboost.com:1002:login:pass", "socks5")
+
+    assert url is not None
+    assert url.startswith("socks5://")
+
+
+def test_line_to_url_quotes_a_password_with_url_characters() -> None:
+    url = line_to_url("host:1000:login:p@ss/word?x")
+
+    assert url is not None
+    assert "p%40ss%2Fword%3Fx" in url
+    assert proxy_settings(url) == {
+        "server": "http://host:1000",
+        "username": "login",
+        "password": "p@ss/word?x",
+    }
+
+
+def test_line_to_url_rejects_malformed_lines() -> None:
+    assert line_to_url("") is None
+    assert line_to_url("host:1000:login") is None
+    assert line_to_url("host:notaport:login:pass") is None
+    assert line_to_url(":1000:login:pass") is None
+
+
+def test_session_id_is_read_from_the_line() -> None:
+    assert session_id_from_line(LINE) == "lf33lu8z"
+    assert session_id_from_line("host:1000:login:plainpass") is None

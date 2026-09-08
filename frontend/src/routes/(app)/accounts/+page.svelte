@@ -82,6 +82,30 @@
 		<p class="text-destructive text-sm" role="alert">{data.loadError}</p>
 	{/if}
 
+	{#if data.proxyBalances.length}
+		{@const ready = data.proxyBalances.filter((row) => row.traffic_ready)}
+		<Card.Root>
+			<Card.Header>
+				<Card.Title>Трафик прокси</Card.Title>
+				<Card.Description>Остаток по типам у провайдера</Card.Description>
+			</Card.Header>
+			<Card.Content>
+				{#if ready.length}
+					<div class="flex flex-wrap gap-4">
+						{#each ready as row (row.proxy_type + row.network)}
+							<div class="text-sm">
+								<span class="font-medium">{row.proxy_type}/{row.network}</span>
+								<span class="text-muted-foreground"> {row.remaining_gb} ГБ</span>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<p class="text-muted-foreground text-sm">Оплаченного трафика нет ни по одному типу.</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
+	{/if}
+
 	{#if data.rotation}
 		<Card.Root>
 			<Card.Header>

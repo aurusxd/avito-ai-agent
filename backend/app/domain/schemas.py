@@ -400,3 +400,31 @@ class LoginSessionRead(BaseModel):
     has_screenshot: bool = False
     remote_view_url: str | None = None
     expires_at: datetime
+
+
+class ProxyBalanceRead(BaseModel):
+    proxy_type: str
+    network: str
+    remaining_mb: float
+    remaining_gb: float
+    traffic_ready: bool
+
+
+class ProxyIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proxy_type: str | None = Field(default=None, max_length=32)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
+    city: str | None = Field(default=None, max_length=120)
+    isp: str | None = Field(default=None, max_length=120)
+    lifetime_minutes: int | None = Field(default=None, ge=1, le=10_080)
+
+
+class ProxyIssueResult(BaseModel):
+    # the caller needs the credentials to store them, the panel shows the mask
+    url: str
+    masked_url: str
+    session_id: str | None = None
+    lifetime_minutes: int
+    country: str
+    city: str | None = None

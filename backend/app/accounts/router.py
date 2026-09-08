@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts.login_service import LoginService
+from app.accounts.proxy_service import ProxyService
 from app.accounts.service import AccountService
 from app.clients.avito.auth_factory import get_auth_client
 from app.clients.avito.base import AvitoAuthClient
+from app.clients.proxy.base import ProxyProvider
+from app.clients.proxy.factory import get_proxy_provider
 from app.config import Settings, get_settings
 from app.db.base import get_session
 from app.domain.schemas import (
@@ -15,6 +18,9 @@ from app.domain.schemas import (
     AccountUpdate,
     LoginSessionRead,
     LoginStartRequest,
+    ProxyBalanceRead,
+    ProxyIssueRequest,
+    ProxyIssueResult,
     RotationPreview,
 )
 from app.security import require_panel_token
@@ -44,6 +50,14 @@ def get_login_service(
 
 
 LoginDep = Annotated[LoginService, Depends(get_login_service)]
+ProxyProviderDep = Annotated[ProxyProvider, Depends(get_proxy_provider)]
+
+
+def get_proxy_service(provider: ProxyProviderDep, settings: SettingsDep) -> ProxyService:
+    return ProxyService(provider, settings)
+
+
+ProxyDep = Annotated[ProxyService, Depends(get_proxy_service)]
 
 
 @router.get("", response_model=list[AccountRead])
@@ -83,6 +97,21 @@ async def cancel_login(session_id: str, service: LoginDep) -> LoginSessionRead:
 @router.get("/login/{session_id}/screenshot")
 async def login_screenshot(session_id: str, service: LoginDep) -> Response:
     return Response(content=service.screenshot(session_id), media_type="image/png")
+
+
+@router.get("/proxy/balances", response_model=list[ProxyBalanceRead])
+async def proxy_balances(service: ProxyDep) -> list[ProxyBalanceRead]:
+    return await service.balances()
+
+
+@router.get("/proxy/options", response_model=list[str])
+async def proxy_options(service: ProxyDep, field: str, country: str | None = None) -> list[str]:
+    return await service.options(field, country)
+
+
+@router.post("/proxy/issue", response_model=ProxyIssueResult)
+async def issue_proxy(payload: ProxyIssueRequest, service: ProxyDep) -> ProxyIssueResult:
+    return await service.issue(payload)
 
 
 @router.get("/{account_id}", response_model=AccountRead)

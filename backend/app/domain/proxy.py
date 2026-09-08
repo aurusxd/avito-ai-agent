@@ -1,5 +1,5 @@
 from typing import NotRequired, TypedDict
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 MASK = "***"
 
@@ -15,7 +15,13 @@ def _split(url: str) -> tuple[str, str, str, str] | None:
     if not parts.scheme or not parts.hostname:
         return None
     port = f":{parts.port}" if parts.port else ""
-    return parts.scheme, parts.hostname + port, parts.username or "", parts.password or ""
+    # a url carries credentials percent-encoded, the proxy expects them raw
+    return (
+        parts.scheme,
+        parts.hostname + port,
+        unquote(parts.username or ""),
+        unquote(parts.password or ""),
+    )
 
 
 def mask_proxy_url(url: str | None) -> str | None:
@@ -42,3 +48,30 @@ def proxy_settings(url: str | None) -> ProxyCredentials | None:
     if password:
         settings["password"] = password
     return settings
+
+
+def line_to_url(line: str, protocol: str = "http") -> str | None:
+    """Turn a provider line `host:port:login:password` into a proxy url.
+
+    Providers encode sticky session options inside the password, so it can carry
+    characters that break a url and has to be quoted.
+    """
+    parts = line.strip().split(":")
+    if len(parts) < 4:
+        return None
+
+    host, port, login = parts[0], parts[1], parts[2]
+    password = ":".join(parts[3:])
+    if not host or not port.isdigit() or not login:
+        return None
+
+    credentials = f"{quote(login, safe='')}:{quote(password, safe='')}"
+    return urlunsplit((protocol, f"{credentials}@{host}:{port}", "", "", ""))
+
+
+def session_id_from_line(line: str) -> str | None:
+    marker = "_session-"
+    _, _, tail = line.partition(marker)
+    if not tail:
+        return None
+    return tail.split("_")[0] or None
