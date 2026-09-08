@@ -2,6 +2,7 @@ import asyncio
 import random
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
@@ -25,7 +26,7 @@ from app.clients.avito.base import (
     SendResult,
 )
 from app.clients.avito.browser import launch_args
-from app.config import Settings, get_settings
+from app.config import BACKEND_ROOT, Settings, get_settings
 from app.domain.proxy import ProxyCredentials, proxy_settings
 from app.domain.rotation import BlockKindLiteral
 from app.domain.schemas import CategoryDTO, ListingDTO, SellerDTO
@@ -319,9 +320,23 @@ class PlaywrightAvitoClient:
     def _settings_proxy(self) -> ProxyCredentials | None:
         return proxy_settings(self.settings.avito_proxy_server)
 
+    def _storage_state_path(self) -> str | None:
+        # the catalogue is public, so a missing session file must not stop a
+        # crawl: playwright raises FileNotFoundError on a path that is not there
+        raw = self.settings.avito_storage_state_path
+        if not raw:
+            return None
+        path = Path(raw)
+        if not path.is_absolute():
+            path = BACKEND_ROOT / path
+        if not path.is_file():
+            logger.info("no session file at {path}, parsing anonymously", path=raw)
+            return None
+        return str(path)
+
     async def _new_context(self, browser: Browser) -> BrowserContext:
         return await browser.new_context(
-            storage_state=self.settings.avito_storage_state_path or None,
+            storage_state=self._storage_state_path(),
             viewport={"width": 1440, "height": 900},
             locale="ru-RU",
             timezone_id="Europe/Moscow",

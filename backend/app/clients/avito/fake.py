@@ -46,6 +46,7 @@ class FakeAvitoClient:
     async def parse_category(self, category: CategoryDTO) -> list[ParserResult]:
         validated = CategoryDTO.model_validate(category)
         self.parsed_categories.append(validated)
+        self._maybe_block()
         self._maybe_fail()
         return [
             result

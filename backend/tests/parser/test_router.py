@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.clients.avito import get_avito_client
+from app.clients.avito.base import AvitoBlockedError
 from app.clients.avito.fake import FakeAvitoClient
 from app.db.base import get_session
 from app.db.models import Category
@@ -116,3 +117,42 @@ async def test_parser_requires_panel_token(
         response = await anonymous.get("/api/parser/sellers")
 
     assert response.status_code == 401
+
+
+async def test_a_block_is_reported_instead_of_a_bare_500(engine: AsyncEngine) -> None:
+    app = create_app()
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    blocked = FakeAvitoClient(
+        block=AvitoBlockedError("avito said no", "rate_limited", 90), block_times=1
+    )
+
+    async def override_session():
+        async with factory() as db:
+            yield db
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_avito_client] = lambda: blocked
+
+    headers = {"X-Panel-Token": "test-token"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as client:
+        created = await client.post(
+            "/api/categories",
+            json={
+                "name": "Бани",
+                "avito_url_or_slug": "rossiya/bani",
+                "region": "Россия",
+                "min_listings_per_seller": 3,
+                "enabled": True,
+            },
+        )
+        category_id = created.json()["id"]
+
+        response = await client.post(f"/api/parser/categories/{category_id}/run")
+
+    assert response.status_code == 502
+    body = response.json()["error"]
+    assert body["code"] == "avito_blocked"
+    assert body["details"]["block_kind"] == "rate_limited"
+    assert body["details"]["retry_after_seconds"] == 90

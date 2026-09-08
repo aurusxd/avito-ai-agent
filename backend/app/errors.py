@@ -5,6 +5,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from loguru import logger
 
+from app.clients.avito.base import AvitoBlockedError
+
 
 class AppError(Exception):
     status_code = 400
@@ -69,6 +71,19 @@ async def handle_validation_error(request: Request, exc: Exception) -> JSONRespo
     )
 
 
+async def handle_avito_blocked(request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, AvitoBlockedError)
+    logger.warning("avito closed the transport: {kind}", kind=exc.block_kind)
+    return JSONResponse(
+        status_code=502,
+        content=_payload(
+            "avito_blocked",
+            f"avito closed this transport: {exc.block_kind}",
+            {"block_kind": exc.block_kind, "retry_after_seconds": exc.retry_after_seconds},
+        ),
+    )
+
+
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     logger.exception(
         "unhandled error on {method} {path}", method=request.method, path=request.url.path
@@ -81,5 +96,6 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
 
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, handle_app_error)
+    app.add_exception_handler(AvitoBlockedError, handle_avito_blocked)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(Exception, handle_unexpected_error)

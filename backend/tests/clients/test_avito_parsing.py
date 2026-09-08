@@ -3,6 +3,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.clients.avito.playwright_client import (
+    PlaywrightAvitoClient,
     absolute_listing_url,
     build_category_url,
     card_to_listing,
@@ -15,6 +16,7 @@ from app.clients.avito.playwright_client import (
     parse_seller_name,
     strip_profile_title_suffix,
 )
+from app.config import get_settings
 
 BASE = "https://www.avito.ru"
 
@@ -252,3 +254,30 @@ def test_parse_seller_name_keeps_company_with_inner_quotes() -> None:
 )
 def test_parse_listings_count(profile: dict[str, object], expected: int | None) -> None:
     assert parse_listings_count(profile) == expected
+
+
+def test_missing_session_file_means_an_anonymous_context(tmp_path) -> None:
+    client = PlaywrightAvitoClient(
+        get_settings().model_copy(update={"avito_storage_state_path": "does-not-exist.json"})
+    )
+
+    assert client._storage_state_path() is None
+
+
+def test_empty_session_setting_means_an_anonymous_context() -> None:
+    client = PlaywrightAvitoClient(
+        get_settings().model_copy(update={"avito_storage_state_path": ""})
+    )
+
+    assert client._storage_state_path() is None
+
+
+def test_existing_session_file_is_used(tmp_path) -> None:
+    state = tmp_path / "state.json"
+    state.write_text("{}", encoding="utf-8")
+
+    client = PlaywrightAvitoClient(
+        get_settings().model_copy(update={"avito_storage_state_path": str(state)})
+    )
+
+    assert client._storage_state_path() == str(state)
