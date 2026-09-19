@@ -220,7 +220,10 @@ class LoginService:
 
     def _ensure_remote_view_ready(self) -> None:
         # the operator signs in inside the browser, so without the remote view
-        # there is no way to finish and the session would only time out
+        # there is no way to finish and the session would only time out; the
+        # showcase logs in on its own and needs no window
+        if self.settings.demo_mode:
+            return
         if not self.settings.vnc_enabled or not self.settings.vnc_public_url:
             raise AppError(
                 "remote browser view is off: set VNC_ENABLED, VNC_PASSWORD and "

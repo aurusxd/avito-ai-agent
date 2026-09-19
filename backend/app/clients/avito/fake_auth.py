@@ -6,9 +6,11 @@ BROKEN_PROXY = "http://broken"
 class FakeAvitoAuthClient:
     provider = "fake"
 
-    def __init__(self, signs_in_after: int = 1) -> None:
-        # how many checks it takes before the fake operator is signed in
+    def __init__(self, signs_in_after: int = 1, auto_sign_in: bool = False) -> None:
+        # how many checks it takes before the fake operator is signed in;
+        # auto_sign_in makes the showcase log in on its own, no operator step
         self.signs_in_after = signs_in_after
+        self.auto_sign_in = auto_sign_in
         self.checks = 0
         self.proxy_url: str | None = None
         self.opened = False
@@ -19,6 +21,8 @@ class FakeAvitoAuthClient:
         if proxy_url == BROKEN_PROXY:
             return LoginStep(status="failed", hint="could not open avito over the proxy")
         self.opened = True
+        if self.auto_sign_in:
+            return LoginStep(status="saving", hint=None)
         return LoginStep(
             status="waiting_for_operator",
             hint="sign in to avito in the window below, then press the button",

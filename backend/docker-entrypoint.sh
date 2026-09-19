@@ -49,4 +49,10 @@ fi
 
 alembic upgrade head
 
+# showcase build: fill the panel with believable data on first boot
+if [ "${DEMO_MODE:-false}" = "true" ]; then
+    echo "demo mode: seeding showcase data"
+    python -m app.db.demo_seed
+fi
+
 exec "$@"

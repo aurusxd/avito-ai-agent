@@ -7,11 +7,12 @@ if TYPE_CHECKING:
 
 
 def get_auth_client() -> "AvitoAuthClient":
-    if get_settings().auth_client == "playwright":
+    settings = get_settings()
+    if settings.auth_client == "playwright":
         from app.clients.avito.playwright_auth import PlaywrightAvitoAuthClient
 
         return PlaywrightAvitoAuthClient()
 
     from app.clients.avito.fake_auth import FakeAvitoAuthClient
 
-    return FakeAvitoAuthClient()
+    return FakeAvitoAuthClient(auto_sign_in=settings.demo_mode)

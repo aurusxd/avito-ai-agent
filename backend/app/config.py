@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     timezone: str = "Europe/Moscow"
+    # showcase build: rich seed data, believable fake clients, manual login and
+    # the remote-view gate relaxed so the whole panel demos without any secrets
+    demo_mode: bool = False
 
     database_url: str = "sqlite+aiosqlite:///./data/avito.db"
 

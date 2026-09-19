@@ -8,6 +8,14 @@ services:
       DATABASE_URL: sqlite+aiosqlite:////app/data/avito.db
       PANEL_API_TOKEN: ${PANEL_API_TOKEN:-dev-panel-token}
       CORS_ORIGINS: '["http://localhost:3000"]'
+      # showcase build: everything runs on believable fakes, no secrets needed.
+      # environment wins over env_file, so this stays a demo even if a real .env
+      # is present on the machine.
+      DEMO_MODE: "true"
+      AVITO_CLIENT: fake
+      AI_CLIENT: fake
+      TELEGRAM_CLIENT: fake
+      AUTH_CLIENT: fake
       AVITO_HEADLESS: ${AVITO_HEADLESS:-false}
       BROWSER_NO_SANDBOX: ${BROWSER_NO_SANDBOX:-true}
       BROWSER_DISABLE_DEV_SHM: ${BROWSER_DISABLE_DEV_SHM:-false}
