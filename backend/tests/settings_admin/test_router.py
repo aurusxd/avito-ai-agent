@@ -56,7 +56,7 @@ async def test_pause_toggles_without_touching_the_window(client: AsyncClient) ->
     assert paused.json()["paused"] is True
     assert paused.json()["window_open_now"] is False
     assert paused.json()["next_window_at"] is None
-    assert "paused" in paused.json()["closed_reason"]
+    assert "паузе" in paused.json()["closed_reason"]
     assert paused.json()["window_start"] == 9
 
     resumed = await client.patch("/api/settings", json={"schedule": {"paused": False}})

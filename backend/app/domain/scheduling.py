@@ -9,6 +9,16 @@ MIN_HOUR = 0
 MAX_HOUR = 24
 LOOKAHEAD_DAYS = 8
 
+WEEKDAY_NAMES = (
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+)
+
 
 @dataclass(frozen=True)
 class ScheduleWindow:
@@ -60,15 +70,15 @@ def next_open_at(window: ScheduleWindow, moment: datetime, tz: tzinfo) -> dateti
 
 def closed_reason(window: ScheduleWindow, moment: datetime, tz: tzinfo) -> str | None:
     if window.paused:
-        return "bot is paused from the panel"
+        return "Бот на паузе — выключен в панели"
     if not window.weekdays:
-        return "no weekday is enabled in the schedule"
+        return "В расписании не включён ни один день недели"
     local = moment.astimezone(tz)
     if local.weekday() not in window.weekdays:
-        return f"weekday {local.weekday()} is disabled in the schedule"
+        return f"Сегодня выходной по расписанию ({WEEKDAY_NAMES[local.weekday()]})"
     if not window.start_hour <= local.hour < window.end_hour:
         return (
-            f"outside the sending window {window.start_hour}-{window.end_hour} "
-            f"(local hour {local.hour})"
+            f"Сейчас вне окна отправки {window.start_hour}–{window.end_hour} "
+            f"(местное время {local.hour}:00)"
         )
     return None

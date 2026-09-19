@@ -69,7 +69,7 @@ async def test_stats_expose_the_bot_state(client: AsyncClient) -> None:
 
     assert body["paused"] is True
     assert body["window_open_now"] is False
-    assert "paused" in body["closed_reason"]
+    assert "паузе" in body["closed_reason"]
 
 
 async def test_stats_report_rotation_capacity(client: AsyncClient, session: AsyncSession) -> None:
