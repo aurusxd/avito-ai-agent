@@ -50,6 +50,27 @@ class InboxService:
         await self.session.commit()
         return result
 
+    async def poll_all(self, limit_per_account: int = 50) -> list[InboxPollResult]:
+        # every account has its own conversations, so monitoring reads each one
+        # under its own session; a block on one account pauses only that account
+        # (see 17.3) and the sweep moves on to the next
+        now = datetime.now(UTC)
+        accounts = list(await self.session.scalars(select(Account).order_by(Account.id)))
+
+        active_ids: list[int] = []
+        for account in accounts:
+            store_state(account, resume_if_cooled(to_state(account), now))
+            if account.status == AccountStatus.ACTIVE:
+                active_ids.append(account.id)
+        await self.session.commit()
+
+        results: list[InboxPollResult] = []
+        for account_id in active_ids:
+            results.append(
+                await self.poll(InboxPollRequest(account_id=account_id, limit=limit_per_account))
+            )
+        return results
+
     async def _ingest(self, reply: IncomingReplyDTO, result: InboxPollResult) -> None:
         seller = await self.session.scalar(
             select(Seller).where(Seller.avito_seller_id == reply.avito_seller_id)

@@ -158,3 +158,57 @@ async def test_limit_is_passed_to_the_client(session: AsyncSession) -> None:
     result = await make_service(session, avito).poll(InboxPollRequest(limit=1))
 
     assert result.fetched == 1
+
+
+async def _add_account(
+    session: AsyncSession, login: str, status: AccountStatus = AccountStatus.ACTIVE
+) -> Account:
+    account = Account(
+        login=login,
+        session_storage_path=f"data/{login}.json",
+        daily_limit=15,
+        status=status,
+    )
+    session.add(account)
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
+async def test_poll_all_reads_every_active_account(session: AsyncSession) -> None:
+    await build_world(session)  # creates one active account
+    second = await _add_account(session, "acc-2")
+    paused = await _add_account(session, "acc-3", AccountStatus.PAUSED)
+    avito = FakeAvitoClient(replies=[])
+
+    results = await make_service(session, avito).poll_all()
+
+    assert paused.id not in avito.fetched_for
+    assert second.id in avito.fetched_for
+    assert len(avito.fetched_for) == 2
+    assert len(results) == 2
+
+
+async def test_poll_all_continues_after_one_account_is_blocked(session: AsyncSession) -> None:
+    await build_world(session)  # acc-1, polled first
+    await _add_account(session, "acc-2")
+    avito = FakeAvitoClient(
+        replies=[], block=AvitoBlockedError("blocked", "forbidden"), block_times=1
+    )
+
+    results = await make_service(session, avito).poll_all()
+
+    assert len(avito.fetched_for) == 2
+    assert sum(1 for result in results if result.block_kind != "none") == 1
+
+    # a forbidden block bans the account (rotation.BANNING_BLOCKS); the sweep
+    # still reaches the next account, which stays active
+    accounts = {a.login: a for a in (await session.scalars(select(Account))).all()}
+    assert accounts["acc-1"].status == AccountStatus.BANNED
+    assert accounts["acc-2"].status == AccountStatus.ACTIVE
+
+
+async def test_poll_all_without_accounts_is_empty(session: AsyncSession) -> None:
+    results = await make_service(session, FakeAvitoClient(replies=[])).poll_all()
+
+    assert results == []

@@ -2,6 +2,7 @@ from httpx import AsyncClient
 
 from app.scheduler import (
     DEMO_JOB_ID,
+    INBOX_JOB_ID,
     LEADS_JOB_ID,
     is_running,
     shutdown_scheduler,
@@ -31,7 +32,9 @@ async def test_start_scheduler_is_idempotent() -> None:
 
         assert first is second
         assert is_running() is True
-        assert sorted(job.id for job in second.get_jobs()) == sorted([DEMO_JOB_ID, LEADS_JOB_ID])
+        assert sorted(job.id for job in second.get_jobs()) == sorted(
+            [DEMO_JOB_ID, LEADS_JOB_ID, INBOX_JOB_ID]
+        )
     finally:
         shutdown_scheduler()
 

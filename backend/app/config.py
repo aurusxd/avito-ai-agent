@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     telegram_timeout_seconds: float = Field(default=15.0, ge=1.0)
     leads_poll_seconds: int = Field(default=60, ge=10, le=600)
     leads_history_limit: int = Field(default=20, ge=1, le=200)
+    inbox_poll_seconds: int = Field(default=300, ge=30, le=3600)
+    inbox_poll_limit: int = Field(default=20, ge=1, le=200)
 
     auth_client: Literal["fake", "playwright"] = "fake"
     browser_no_sandbox: bool = False
