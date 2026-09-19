@@ -153,6 +153,10 @@ class AccountService:
         )
 
     def _session_file_exists(self, raw_path: str) -> bool:
+        # the showcase accounts are signed in already, so their session reads
+        # as present even though no real storage file sits on disk
+        if self.settings.demo_mode:
+            return True
         path = Path(raw_path)
         if not path.is_absolute():
             path = BACKEND_ROOT / path
