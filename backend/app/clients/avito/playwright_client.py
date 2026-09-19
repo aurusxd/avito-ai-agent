@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import random
 import re
 from datetime import UTC, datetime
@@ -39,6 +40,13 @@ ICEBREAKER_SEND = '[data-marker="icebreakers/send-message"]'
 VPN_CHECK_SELECTOR = '[data-marker="vpn-check-retry-button"]'
 PROFILE_LINK_SELECTOR = '[data-marker="item-title"]'
 LOGGED_OUT_SELECTOR = '[data-marker="header/login-button"]'
+
+MESSENGER_PATH = "/profile/messenger"
+CHANNELS_LIST_SELECTOR = '[data-marker="channels/list"]'
+CHANNEL_SELECTOR = '[data-marker="channels/channel"]'
+MESSAGE_SELECTOR = '[data-marker="message"]'
+# left bubbles are the interlocutor's, right bubbles are ours; captured live
+INBOUND_BUBBLE_CLASS = "message-base-module-left"
 
 CAPTCHA_MARKERS = ("подтвердите, что вы не робот", "captcha")
 FORBIDDEN_MARKERS = (
@@ -81,6 +89,33 @@ PROFILE_SCRIPT = """
     activeText: tab ? tab.textContent.trim() : null,
     profileItemCount: document.querySelectorAll('[data-marker="item"]').length,
   };
+}
+"""
+
+# the channel row exposes data-id but not always an <a href>; the chat url is
+# built from the id: /profile/messenger/channel/<data-id> (captured live)
+CHANNELS_SCRIPT = """
+() => [...document.querySelectorAll('[data-marker="channels/channel"]')]
+  .map((el) => el.getAttribute('data-id'))
+  .filter(Boolean)
+"""
+
+CHANNEL_SCRIPT = """
+(inboundClass) => {
+  const userLink = document.querySelector('a[href*="/user/"]');
+  let sellerId = null;
+  if (userLink) {
+    const match = userLink.getAttribute('href').match(/\\/user\\/([0-9a-z]+)/i);
+    if (match) sellerId = match[1];
+  }
+  const inbound = [...document.querySelectorAll('[data-marker="message"]')]
+    .filter((el) => (el.className || '').includes(inboundClass))
+    .map((el) => {
+      const text = el.querySelector('[data-marker="messageText"]');
+      return (text ? text.textContent : el.textContent || '').trim();
+    })
+    .filter(Boolean);
+  return { sellerId, inbound };
 }
 """
 
@@ -463,7 +498,95 @@ class PlaywrightAvitoClient:
     async def fetch_replies(
         self, account: AvitoAccountRef, limit: int = 50
     ) -> list[IncomingReplyDTO]:
-        raise NotImplementedError(
-            "avito messenger selectors are not captured yet, see tech.md 20.1; "
-            "run the reader against FakeAvitoClient until a live session is available"
+        validated = AvitoAccountRef.model_validate(account)
+        proxy = proxy_settings(validated.proxy_url) or self._settings_proxy()
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                headless=self.settings.avito_headless,
+                args=launch_args(self.settings),
+                proxy=cast("ProxySettings | None", proxy),
+            )
+            try:
+                context = await browser.new_context(
+                    storage_state=validated.session_storage_path,
+                    viewport={"width": 1440, "height": 900},
+                    locale="ru-RU",
+                    timezone_id="Europe/Moscow",
+                )
+                page = await context.new_page()
+                return await self._collect_replies(page, limit)
+            finally:
+                await browser.close()
+
+    async def _collect_replies(self, page: Page, limit: int) -> list[IncomingReplyDTO]:
+        await self._goto(page, urljoin(self.settings.avito_base_url, MESSENGER_PATH))
+
+        try:
+            await page.wait_for_selector(
+                f"{CHANNEL_SELECTOR}, {LOGGED_OUT_SELECTOR}",
+                timeout=self.settings.parser_nav_timeout_ms,
+            )
+        except PlaywrightError:
+            logger.debug("messenger showed neither a channel row nor the login button")
+
+        if await page.query_selector(LOGGED_OUT_SELECTOR) is not None:
+            raise AvitoBlockedError("session expired while reading the inbox", "auth_required")
+
+        if await page.query_selector(CHANNEL_SELECTOR) is None:
+            return []
+
+        await page.wait_for_timeout(self.settings.parser_profile_settle_ms)
+        channel_ids: list[str] = await page.evaluate(CHANNELS_SCRIPT)
+
+        replies: list[IncomingReplyDTO] = []
+        seen: set[str] = set()
+        for channel_id in channel_ids[:limit]:
+            await self._sleep()
+            try:
+                reply = await self._read_channel(page, channel_id)
+            except AvitoBlockedError:
+                raise
+            except PlaywrightError as error:
+                logger.debug("skipped a channel that failed to load: {error}", error=error)
+                continue
+
+            if reply is None or reply.external_id in seen:
+                continue
+            seen.add(reply.external_id)
+            replies.append(reply)
+            if len(replies) >= limit:
+                break
+
+        return replies
+
+    async def _read_channel(self, page: Page, channel_id: str) -> IncomingReplyDTO | None:
+        chat_url = urljoin(self.settings.avito_base_url, f"{MESSENGER_PATH}/channel/{channel_id}")
+        await self._goto(page, chat_url)
+
+        try:
+            await page.wait_for_selector(
+                MESSAGE_SELECTOR, timeout=self.settings.parser_nav_timeout_ms
+            )
+        except PlaywrightError:
+            return None
+
+        await page.wait_for_timeout(self.settings.parser_profile_settle_ms)
+        data: dict[str, Any] = await page.evaluate(CHANNEL_SCRIPT, INBOUND_BUBBLE_CLASS)
+
+        seller_id = data.get("sellerId")
+        inbound = [text for text in (data.get("inbound") or []) if text]
+        if not seller_id or not inbound:
+            return None
+
+        # avito exposes no per-message id in the dom, so the dedup key is the
+        # channel id plus a hash of the latest inbound text (see tech.md 20.4)
+        text = inbound[-1]
+        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+        return IncomingReplyDTO(
+            external_id=f"{channel_id}:{digest}",
+            avito_seller_id=str(seller_id),
+            text=text,
+            received_at=datetime.now(UTC),
+            chat_url=chat_url,
         )
