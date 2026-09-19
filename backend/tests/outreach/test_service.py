@@ -325,7 +325,7 @@ async def test_send_is_skipped_while_the_bot_is_paused(session: AsyncSession) ->
     )
 
     assert result.status == "skipped"
-    assert "paused" in (result.reason or "")
+    assert "паузе" in (result.reason or "")
     assert client.sent == []
     assert await count_logs(session) == 0
 

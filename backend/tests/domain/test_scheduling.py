@@ -90,9 +90,9 @@ def test_next_open_is_none_when_paused_or_without_weekdays() -> None:
 
 def test_closed_reason_explains_why() -> None:
     assert closed_reason(window(), msk(2026, 9, 7, 12), MSK) is None
-    assert "paused" in (closed_reason(window(paused=True), msk(2026, 9, 7, 12), MSK) or "")
-    assert "weekday" in (closed_reason(window(), msk(2026, 9, 12, 12), MSK) or "")
-    assert "window" in (closed_reason(window(), msk(2026, 9, 7, 6), MSK) or "")
+    assert "паузе" in (closed_reason(window(paused=True), msk(2026, 9, 7, 12), MSK) or "")
+    assert "выходной" in (closed_reason(window(), msk(2026, 9, 12, 12), MSK) or "")
+    assert "окна" in (closed_reason(window(), msk(2026, 9, 7, 6), MSK) or "")
 
 
 @given(start=hours, end=hours, weekdays=weekday_lists, paused=st.booleans())
