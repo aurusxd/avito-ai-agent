@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -168,8 +168,10 @@ class SpfaCookieProvider:
             self._purchases_today = 0
 
         if self._purchases_today >= self.settings.spfa_max_purchases_per_day:
+            midnight = datetime.combine(today + timedelta(days=1), time.min, tzinfo=self.timezone)
             raise CookieBudgetExhaustedError(
-                f"spfa daily cap reached ({self._purchases_today} purchases)"
+                f"spfa daily cap reached ({self._purchases_today} purchases)",
+                int((midnight - datetime.now(self.timezone)).total_seconds()),
             )
 
         if self._last_purchase_at is None:
@@ -178,7 +180,8 @@ class SpfaCookieProvider:
         cooldown = self.settings.spfa_purchase_cooldown_seconds
         if elapsed < cooldown:
             raise CookieBudgetExhaustedError(
-                f"spfa purchase cooldown: {int(cooldown - elapsed)}s left"
+                f"spfa purchase cooldown: {int(cooldown - elapsed)}s left",
+                int(cooldown - elapsed),
             )
 
     def _count_purchase(self) -> None:

@@ -11,7 +11,15 @@ class CookieProviderError(RuntimeError):
 
 
 class CookieBudgetExhaustedError(CookieProviderError):
-    """Дневной потолок покупок исчерпан (§27.8): дальше не покупаем, а останавливаемся."""
+    """Покупать нельзя: кулдаун или суточный потолок (§27.8).
+
+    `retry_after_seconds` уходит наружу в 502, иначе оператор видит «заблокировано»
+    там, где на самом деле мы сами отказались тратить деньги.
+    """
+
+    def __init__(self, message: str, retry_after_seconds: int | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class CookieBundle(BaseModel):
@@ -41,5 +49,7 @@ class CookieProvider(Protocol):
     async def get(self) -> CookieBundle: ...
 
     async def refresh(self) -> CookieBundle | None: ...
+
+    async def purchase(self) -> CookieBundle: ...
 
     async def invalidate(self) -> None: ...

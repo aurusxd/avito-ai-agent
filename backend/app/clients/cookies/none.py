@@ -13,6 +13,9 @@ class NoCookieProvider:
     async def get(self) -> CookieBundle:
         return CookieBundle(obtained_at=datetime.now(UTC))
 
+    async def purchase(self) -> CookieBundle:
+        return await self.get()
+
     async def refresh(self) -> CookieBundle | None:
         return None
 

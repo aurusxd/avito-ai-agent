@@ -287,3 +287,45 @@ async def test_balance_is_read(tmp_path: Path) -> None:
     )
 
     assert await provider.balance() == pytest.approx(44.0)
+
+
+async def test_a_refused_purchase_keeps_the_cookie_we_already_have(tmp_path: Path) -> None:
+    provider, _ = build(
+        tmp_path, {"/api/cookies/mobile/": [httpx.Response(200, json=BOUGHT)]}, cooldown=600
+    )
+    bought = await provider.get()
+
+    with pytest.raises(CookieBudgetExhaustedError):
+        await provider.purchase()
+
+    # иначе следующий прогон стартует вообще без куки и падает сразу
+    assert (await provider.get()).id == bought.id
+
+
+async def test_cooldown_reports_how_long_to_wait(tmp_path: Path) -> None:
+    provider, _ = build(
+        tmp_path, {"/api/cookies/mobile/": [httpx.Response(200, json=BOUGHT)]}, cooldown=600
+    )
+    await provider.get()
+
+    with pytest.raises(CookieBudgetExhaustedError) as error:
+        await provider.purchase()
+
+    assert error.value.retry_after_seconds is not None
+    assert 0 < error.value.retry_after_seconds <= 600
+
+
+async def test_daily_cap_reports_the_wait_until_midnight(tmp_path: Path) -> None:
+    provider, _ = build(
+        tmp_path,
+        {"/api/cookies/mobile/": [httpx.Response(200, json=BOUGHT)]},
+        cooldown=0,
+        daily_cap=1,
+    )
+    await provider.get()
+
+    with pytest.raises(CookieBudgetExhaustedError) as error:
+        await provider.purchase()
+
+    assert error.value.retry_after_seconds is not None
+    assert 0 < error.value.retry_after_seconds <= 24 * 3600

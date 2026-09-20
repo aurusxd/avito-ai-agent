@@ -20,16 +20,20 @@ class FakeCookieProvider:
 
     async def get(self) -> CookieBundle:
         if self._bundle is None:
-            self.purchases += 1
-            self._bundle = CookieBundle(
-                id=self.purchases,
-                cookies=dict(FAKE_COOKIES),
-                user_agent=FAKE_USER_AGENT,
-                impersonate="chrome131_android",
-                headers={"user-agent": FAKE_USER_AGENT},
-                mobile=True,
-                obtained_at=datetime.now(UTC),
-            )
+            return await self.purchase()
+        return self._bundle
+
+    async def purchase(self) -> CookieBundle:
+        self.purchases += 1
+        self._bundle = CookieBundle(
+            id=self.purchases,
+            cookies=dict(FAKE_COOKIES),
+            user_agent=FAKE_USER_AGENT,
+            impersonate="chrome131_android",
+            headers={"user-agent": FAKE_USER_AGENT},
+            mobile=True,
+            obtained_at=datetime.now(UTC),
+        )
         return self._bundle
 
     async def refresh(self) -> CookieBundle | None:

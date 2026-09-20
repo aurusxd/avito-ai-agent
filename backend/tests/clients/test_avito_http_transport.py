@@ -77,6 +77,9 @@ class BrokeProvider:
     async def get(self) -> CookieBundle:
         raise self.error
 
+    async def purchase(self) -> CookieBundle:
+        raise self.error
+
     async def refresh(self) -> CookieBundle | None:
         return None
 
@@ -253,3 +256,37 @@ async def test_a_dead_url_converter_is_a_block_not_a_crash() -> None:
 
     assert error.value.block_kind == "unavailable"
     assert "502" in str(error.value)
+
+
+class CappedProvider(FakeCookieProvider):
+    """Кука есть, но купить замену нельзя: кулдаун ещё идёт."""
+
+    async def purchase(self) -> CookieBundle:
+        if self.purchases:
+            raise CookieBudgetExhaustedError("spfa purchase cooldown: 533s left", 533)
+        return await super().purchase()
+
+
+async def test_a_refused_purchase_tells_the_operator_how_long_to_wait() -> None:
+    client = build([(403, None)], cookies=CappedProvider(refreshable=False), max_pages=1)
+
+    with pytest.raises(AvitoBlockedError) as error:
+        await client.parse_category(CATEGORY)
+
+    # без этого оператор видит «заблокировано» там, где мы сами не стали тратить деньги
+    assert error.value.retry_after_seconds == 533
+    assert "cooldown" in str(error.value)
+
+
+async def test_an_exhausted_budget_before_the_first_page_is_not_blamed_on_avito() -> None:
+    client = build(
+        [(200, page(item(1)))],
+        cookies=BrokeProvider(CookieBudgetExhaustedError("spfa daily cap reached", 4200)),
+        max_pages=1,
+    )
+
+    with pytest.raises(AvitoBlockedError) as error:
+        await client.parse_category(CATEGORY)
+
+    assert error.value.block_kind == "unavailable"
+    assert error.value.retry_after_seconds == 4200

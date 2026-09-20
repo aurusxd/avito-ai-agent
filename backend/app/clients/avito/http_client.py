@@ -238,12 +238,15 @@ class HttpAvitoClient:
                 return payload
             block_kind = BLOCK_STATUSES[status]
 
-        # 2. не помогло — новая кука, если кулдаун и суточный потолок позволяют
+        # 2. не помогло — новая кука, если кулдаун и суточный потолок позволяют.
+        # покупка сама решает, можно ли тратить; выбрасывать текущую куку до
+        # успешной замены нельзя, иначе следующий прогон стартует вообще без неё
         try:
-            await self.cookies.invalidate()
-            bought = await self.cookies.get()
+            bought = await self.cookies.purchase()
         except CookieBudgetExhaustedError as error:
-            raise AvitoBlockedError(str(error), block_kind) from error
+            raise AvitoBlockedError(
+                str(error), block_kind, retry_after_seconds=error.retry_after_seconds
+            ) from error
         except CookieProviderError as error:
             raise AvitoBlockedError(f"cookies unavailable: {error}", block_kind) from error
 
@@ -258,7 +261,10 @@ class HttpAvitoClient:
         try:
             return await self.cookies.get()
         except CookieBudgetExhaustedError as error:
-            raise AvitoBlockedError(str(error), "rate_limited") from error
+            # это наш собственный потолок расходов, а не запрет Авито
+            raise AvitoBlockedError(
+                str(error), "unavailable", retry_after_seconds=error.retry_after_seconds
+            ) from error
         except CookieProviderError as error:
             raise AvitoBlockedError(f"cookies unavailable: {error}", "unavailable") from error
 
