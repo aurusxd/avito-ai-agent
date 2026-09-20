@@ -62,6 +62,18 @@ class Settings(BaseSettings):
     parser_profile_settle_ms: int = Field(default=1_500, ge=0)
     parser_retry_backoff_seconds: float = Field(default=3.0, ge=0.0)
 
+    avito_parser_transport: Literal["browser", "http"] = "browser"
+    parser_proxy_url: str = ""
+    parser_api_url_cache_path: str = "data/avito_api_urls.json"
+
+    cookie_provider: Literal["none", "spfa", "fake"] = "none"
+    spfa_api_key: str = ""
+    spfa_base_url: str = "https://spfa.pro/api"
+    spfa_timeout_seconds: float = Field(default=90.0, ge=1.0)
+    spfa_purchase_cooldown_seconds: int = Field(default=600, ge=0)
+    spfa_max_purchases_per_day: int = Field(default=12, ge=0)
+    spfa_cookie_storage_path: str = "data/spfa_cookies.json"
+
     ai_client: Literal["fake", "deepseek", "openai", "chain"] = "fake"
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"

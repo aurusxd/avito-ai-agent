@@ -75,3 +75,20 @@ def session_id_from_line(line: str) -> str | None:
     if not tail:
         return None
     return tail.split("_")[0] or None
+
+
+def proxy_auth_line(url: str | None) -> str | None:
+    """Turn a proxy url into the `login:password@host:port` line spfa expects (§27.6).
+
+    Credentials come back decoded: the service rejects a percent-encoded password
+    the same way the proxy itself would.
+    """
+    if not url:
+        return None
+    parts = _split(url)
+    if parts is None:
+        return None
+    _, host, username, password = parts
+    if not username or not password:
+        return None
+    return f"{username}:{password}@{host}"

@@ -1,7 +1,13 @@
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.domain.proxy import line_to_url, mask_proxy_url, proxy_settings, session_id_from_line
+from app.domain.proxy import (
+    line_to_url,
+    mask_proxy_url,
+    proxy_auth_line,
+    proxy_settings,
+    session_id_from_line,
+)
 
 secrets = st.text(
     alphabet=st.characters(min_codepoint=33, max_codepoint=126, blacklist_characters=":@/?#[]%"),
@@ -118,3 +124,27 @@ def test_line_to_url_rejects_malformed_lines() -> None:
 def test_session_id_is_read_from_the_line() -> None:
     assert session_id_from_line(LINE) == "lf33lu8z"
     assert session_id_from_line("host:1000:login:plainpass") is None
+
+
+def test_proxy_auth_line_decodes_credentials_for_spfa() -> None:
+    url = line_to_url("res.lteboost.com:1000:login:p@ss:word")
+
+    assert url is not None
+    # сервис ждёт сырые логин и пароль, percent-encoding он не принимает (§27.6)
+    assert proxy_auth_line(url) == "login:p@ss:word@res.lteboost.com:1000"
+
+
+def test_proxy_auth_line_needs_credentials() -> None:
+    assert proxy_auth_line("http://proxy.example.com:8000") is None
+    assert proxy_auth_line("") is None
+    assert proxy_auth_line("not a url") is None
+
+
+@given(secrets, secrets, hosts, ports)
+def test_proxy_auth_line_round_trips_through_the_url(
+    login: str, password: str, host: str, port: int
+) -> None:
+    url = line_to_url(f"{host}:{port}:{login}:{password}")
+
+    assert url is not None
+    assert proxy_auth_line(url) == f"{login}:{password}@{host}:{port}"
