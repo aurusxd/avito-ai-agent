@@ -1,0 +1,3 @@
+# shell-скрипты уезжают в linux-образ: CRLF ломает shebang (exec: no such file or directory)
+*.sh text eol=lf
+Dockerfile text eol=lf

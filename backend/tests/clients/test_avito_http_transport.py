@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from app.clients.avito.api_url import AvitoApiUrlError
 from app.clients.avito.base import (
     AvitoAccountRef,
     AvitoBlockedError,
@@ -235,3 +236,20 @@ async def test_sending_and_reading_go_to_the_browser() -> None:
     assert result.status == "sent"
     assert fallback.sent == ["привет"]
     assert fallback.fetched == [7]
+
+
+class DeadResolver:
+    async def resolve(self, category_url: str) -> str:
+        raise AvitoApiUrlError("api url conversion returned 502", 502)
+
+
+async def test_a_dead_url_converter_is_a_block_not_a_crash() -> None:
+    # §26.2: оператор должен увидеть закрытый транспорт, а не 500
+    client = build([(200, page(item(1)))], max_pages=1)
+    client.resolver = DeadResolver()  # type: ignore[assignment]
+
+    with pytest.raises(AvitoBlockedError) as error:
+        await client.parse_category(CATEGORY)
+
+    assert error.value.block_kind == "unavailable"
+    assert "502" in str(error.value)

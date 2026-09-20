@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from curl_cffi import requests as curl_requests
 from loguru import logger
 
-from app.clients.avito.api_url import AvitoApiUrlResolver
+from app.clients.avito.api_url import AvitoApiUrlError, AvitoApiUrlResolver
 from app.clients.avito.base import (
     AvitoAccountRef,
     AvitoBlockedError,
@@ -190,7 +190,11 @@ class HttpAvitoClient:
 
     async def parse_category(self, category: CategoryDTO) -> list[ParserResult]:
         category_url = build_category_url(self.settings.avito_base_url, category.avito_url_or_slug)
-        api_url = await self.resolver.resolve(category_url)
+        try:
+            api_url = await self.resolver.resolve(category_url)
+        except AvitoApiUrlError as error:
+            # §26.2: закрытый транспорт это 502 avito_blocked, а не 500 у оператора
+            raise AvitoBlockedError(f"api url is unavailable: {error}", "unavailable") from error
 
         items: list[dict[str, Any]] = []
         for page in range(1, self.settings.parser_max_pages + 1):
